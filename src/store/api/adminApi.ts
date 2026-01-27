@@ -259,6 +259,19 @@ export interface PolicyGenerationResult {
   error?: string;
 }
 
+export interface PolicyGenerationTaskResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export interface PolicyTaskStatusResponse {
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  result?: PolicyGenerationResult;
+  error?: string;
+  message?: string;
+}
+
 // Disallowed phrases types
 export interface DisallowedPhrasesResponse {
   current_phrases: string[];
@@ -456,14 +469,34 @@ export const adminApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [{ type: 'AffidavitType', id }],
     }),
 
-    // Generate policy from uploaded documents using AI
-    generatePolicy: builder.mutation<PolicyGenerationResult, { id: number; data: PolicyGenerationRequest }>({
+    // Generate policy from uploaded documents using AI (async)
+    generatePolicy: builder.mutation<PolicyGenerationTaskResponse, { id: number; data: PolicyGenerationRequest }>({
       query: ({ id, data }) => ({
         url: `/admin/types/${id}/generate-policy/`,
         method: 'POST',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // Poll for policy generation task status
+    getPolicyTaskStatus: builder.query<PolicyTaskStatusResponse, { taskId: string; affidavitTypeId?: number; autoSave?: boolean }>({
+      query: ({ taskId, affidavitTypeId, autoSave }) => {
+        const params = new URLSearchParams();
+        if (affidavitTypeId) params.append('affidavit_type_id', affidavitTypeId.toString());
+        if (autoSave) params.append('auto_save', 'true');
+        return `/admin/policy-task/${taskId}/?${params.toString()}`;
+      },
+      // Don't cache this query - always fetch fresh
+      keepUnusedDataFor: 0,
+      // Invalidate type when task completes successfully
+      async onQueryStarted({ affidavitTypeId }, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data.status === 'completed' && affidavitTypeId) {
+            dispatch(adminApi.util.invalidateTags([{ type: 'AffidavitType', id: affidavitTypeId }]));
+          }
+        } catch {}
+      },
     }),
 
     // Get disallowed phrases with suggestions
@@ -758,6 +791,7 @@ export const {
   useGetTemplateDocumentsQuery,
   useDeleteTemplateDocumentMutation,
   useGeneratePolicyMutation,
+  useGetPolicyTaskStatusQuery,
   useGetDisallowedPhrasesQuery,
   useUpdateDisallowedPhrasesMutation,
   useAddDisallowedPhrasesMutation,

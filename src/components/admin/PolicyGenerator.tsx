@@ -1,5 +1,5 @@
 // Policy Generator Component - Upload examples and generate policy with AI
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
   useUploadTemplateDocumentsMutation,
   useDeleteTemplateDocumentMutation,
   useGeneratePolicyMutation,
+  useGetPolicyTaskStatusQuery,
   type PolicyGenerationResult,
   type DetectedField,
   type TemplateDocument,
@@ -49,6 +50,8 @@ export function PolicyGenerator({
   const [additionalContext, setAdditionalContext] = useState('');
   const [autoSave, setAutoSave] = useState(false);
   const [generatedPolicy, setGeneratedPolicy] = useState<PolicyGenerationResult | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // API hooks
   const { data: documentsData, isLoading: isLoadingDocs, refetch: refetchDocs } = useGetTemplateDocumentsQuery(typeId);
@@ -56,7 +59,59 @@ export function PolicyGenerator({
   const [deleteDocument, { isLoading: isDeleting }] = useDeleteTemplateDocumentMutation();
   const [generatePolicy, { isLoading: isGenerating }] = useGeneratePolicyMutation();
 
+  // Poll for task status when we have a taskId
+  const { data: taskStatus, refetch: refetchTaskStatus } = useGetPolicyTaskStatusQuery(
+    { 
+      taskId: taskId!, 
+      affidavitTypeId: typeId,
+      autoSave 
+    },
+    { skip: !taskId, pollingInterval: taskId ? 2000 : undefined } // Poll every 2 seconds
+  );
+
   const documents = documentsData?.documents || [];
+
+  // Handle task status updates
+  useEffect(() => {
+    if (!taskStatus || !taskId) return;
+
+    if (taskStatus.status === 'completed' && taskStatus.result) {
+      setTaskId(null); // Stop polling
+      const result = taskStatus.result;
+      setGeneratedPolicy(result);
+
+      if (result.success) {
+        toast.success(result.saved ? 'Policy generated and saved!' : 'Policy generated successfully!');
+        // Convert detected_fields to IntakeQuestion format
+        const questions = result.detected_fields.map((field: DetectedField, index: number) => ({
+          id: field.id || `field_${index}_${Date.now()}`,
+          label: field.label,
+          field_name: field.id,
+          type: field.type as IntakeQuestion['type'],
+          required: field.required,
+          placeholder: field.placeholder,
+          help_text: field.help_text,
+          options: field.options,
+          order: index + 1,
+        }));
+        onPolicyGenerated?.(result, questions);
+      } else {
+        toast.error(result.error || 'Policy generation failed');
+      }
+    } else if (taskStatus.status === 'failed') {
+      setTaskId(null); // Stop polling
+      toast.error(taskStatus.error || 'Policy generation failed');
+    }
+  }, [taskStatus, taskId, onPolicyGenerated, autoSave]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
 
   // File upload handling
   const onDrop = useCallback(
@@ -107,7 +162,7 @@ export function PolicyGenerator({
     }
 
     try {
-      const result = await generatePolicy({
+      const response = await generatePolicy({
         id: typeId,
         data: {
           additional_context: additionalContext,
@@ -115,28 +170,12 @@ export function PolicyGenerator({
         },
       }).unwrap();
 
-      setGeneratedPolicy(result);
-
-      if (result.success) {
-        toast.success(result.saved ? 'Policy generated and saved!' : 'Policy generated successfully!');
-        // Convert detected_fields to IntakeQuestion format
-        const questions = result.detected_fields.map((field: DetectedField, index: number) => ({
-          id: field.id || `field_${index}_${Date.now()}`,
-          label: field.label,
-          field_name: field.id,
-          type: field.type as IntakeQuestion['type'],
-          required: field.required,
-          placeholder: field.placeholder,
-          help_text: field.help_text,
-          options: field.options,
-          order: index + 1,
-        }));
-        onPolicyGenerated?.(result, questions);
-      } else {
-        toast.error(result.error || 'Policy generation failed');
-      }
-    } catch {
-      toast.error('Failed to generate policy');
+      // Start polling for results
+      setTaskId(response.task_id);
+      toast.info('Policy generation started... This may take 20-40 seconds.');
+    } catch (error: any) {
+      console.error('Failed to start policy generation:', error);
+      toast.error(error?.data?.error || 'Failed to start policy generation');
     }
   };
 
@@ -285,14 +324,14 @@ export function PolicyGenerator({
 
           <Button
             onClick={handleGeneratePolicy}
-            disabled={isGenerating || documents.length === 0}
+            disabled={isGenerating || !!taskId || documents.length === 0}
             className="w-full"
             size="lg"
           >
-            {isGenerating ? (
+            {isGenerating || taskId ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analyzing documents...
+                {taskId ? 'Generating policy...' : 'Starting generation...'}
               </>
             ) : (
               <>
