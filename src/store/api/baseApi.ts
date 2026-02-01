@@ -78,6 +78,9 @@ export const baseApi = createApi({
     'Commissioner',
     'Reviewer',
     'AIInstruction',
+    'PaymentLogs',
+    'SiteSettings',
+    'TypeRequests',
   ],
   endpoints: () => ({}),
 });

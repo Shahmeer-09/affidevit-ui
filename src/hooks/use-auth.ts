@@ -1,13 +1,14 @@
 import { createContext, useContext } from 'react';
-import type { User, UserRole, RegisterData } from '@/types';
+import type { User, UserRole, RegisterData, CommissionerRegisterData } from '@/types';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<User>;
   logout: () => void;
   register: (data: RegisterData) => Promise<void>;
+  registerCommissioner: (data: CommissionerRegisterData) => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   hasRole: (roles: UserRole | UserRole[]) => boolean;
 }

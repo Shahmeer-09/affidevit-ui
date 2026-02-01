@@ -51,7 +51,7 @@ export function PolicyGenerator({
   const [autoSave, setAutoSave] = useState(false);
   const [generatedPolicy, setGeneratedPolicy] = useState<PolicyGenerationResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<number | null>(null);
 
   // API hooks
   const { data: documentsData, isLoading: isLoadingDocs, refetch: refetchDocs } = useGetTemplateDocumentsQuery(typeId);
@@ -60,7 +60,7 @@ export function PolicyGenerator({
   const [generatePolicy, { isLoading: isGenerating }] = useGeneratePolicyMutation();
 
   // Poll for task status when we have a taskId
-  const { data: taskStatus, refetch: refetchTaskStatus } = useGetPolicyTaskStatusQuery(
+  const { data: taskStatus } = useGetPolicyTaskStatusQuery(
     { 
       taskId: taskId!, 
       affidavitTypeId: typeId,

@@ -31,7 +31,7 @@ export function LandingPage() {
         case 'reviewer':
           return <Navigate to={ROUTES.REVIEWER_DASHBOARD} replace />;
         case 'commissioner':
-          return <Navigate to={ROUTES.COMMISSIONER_DASHBOARD} replace />;
+          return <Navigate to={ROUTES.COMMISSIONER_LOOKUP} replace />;
       }
     }
   }

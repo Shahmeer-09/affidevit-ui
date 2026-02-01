@@ -3,6 +3,30 @@
 // ============================================
 
 export type UserRole = 'public' | 'commissioner' | 'reviewer' | 'admin';
+export type PaymentPreference = 'bank_transfer' | 'cheque' | 'cash';
+
+export interface TimeSlot {
+  start: string; // HH:MM format
+  end: string;
+}
+
+export interface AvailabilitySchedule {
+  recurring?: {
+    monday?: TimeSlot[];
+    tuesday?: TimeSlot[];
+    wednesday?: TimeSlot[];
+    thursday?: TimeSlot[];
+    friday?: TimeSlot[];
+    saturday?: TimeSlot[];
+    sunday?: TimeSlot[];
+  };
+  specific_dates?: {
+    date: string; // YYYY-MM-DD format
+    available: boolean;
+    slots?: TimeSlot[];
+  }[];
+  timezone?: string;
+}
 
 export interface User {
   id: number;
@@ -10,12 +34,24 @@ export interface User {
   first_name: string;
   last_name: string;
   role: UserRole;
-  phone?: string;
+  phone_number?: string;
   commission_number?: string;
   commission_expiry?: string;
   pdf_preferences?: PDFPreferences;
   is_superuser?: boolean;
   created_at: string;
+  // Commissioner-specific fields
+  organization?: string;
+  bio?: string;
+  address?: string;
+  profile_image?: string;
+  profile_image_url?: string;
+  availability?: AvailabilitySchedule;
+  bank_name?: string;
+  bank_branch?: string;
+  bank_account_number?: string;
+  bank_account_name?: string;
+  payment_preference?: PaymentPreference;
 }
 
 export interface AuthTokens {
@@ -26,6 +62,7 @@ export interface AuthTokens {
 export interface LoginCredentials {
   email: string;
   password: string;
+  remember_me?: boolean;
 }
 
 export interface RegisterData {
@@ -34,10 +71,23 @@ export interface RegisterData {
   password_confirm: string;
   first_name: string;
   last_name: string;
-  role?: UserRole;
   phone?: string;
+  phone_number?: string;
+}
+
+export interface CommissionerRegisterData extends RegisterData {
+  profile_image?: File;
+  bio?: string;
+  organization?: string;
+  address?: string;
   commission_number?: string;
   commission_expiry?: string;
+  availability?: AvailabilitySchedule;
+  bank_name?: string;
+  bank_branch?: string;
+  bank_account_number?: string;
+  bank_account_name?: string;
+  payment_preference?: PaymentPreference;
 }
 
 // ============================================
@@ -223,6 +273,8 @@ export interface Request {
   locked_at?: string;
   is_locked?: boolean;
   lock_holder_name?: string;
+  is_paid?: boolean;
+  user_paid_at?: string;
   created_at: string;
   updated_at: string;
   submitted_at?: string;

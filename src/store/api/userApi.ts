@@ -93,6 +93,8 @@ export interface PublicCommissioner {
   profile_image_url: string | null;
   bio: string;
   organization: string | null;
+  availability?: Record<string, unknown>;
+  address?: string | null;
 }
 
 export const userApi = baseApi.injectEndpoints({
@@ -287,6 +289,50 @@ export const userApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['MyRequests'],
     }),
+
+    // Mark request as paid (fake payment for now)
+    markRequestPaid: builder.mutation<
+      { success: boolean; message: string; request: Request },
+      number
+    >({
+      query: (id) => ({
+        url: `/requests/${id}/mark-paid/`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Request', id },
+        'MyRequests',
+      ],
+    }),
+
+    // Validate request inputs before submission
+    validateRequestInput: builder.mutation<
+      {
+        success: boolean;
+        all_valid: boolean;
+        invalid_fields: Record<string, string>;
+        validation_notes: Array<{
+          field: string;
+          value: string;
+          issue: string;
+          example: string;
+        }>;
+        field_checks: Array<{
+          field: string;
+          value: string;
+          is_valid: boolean;
+          issue: string | null;
+          example: string | null;
+        }>;
+      },
+      { affidavit_type_id: number; answers_json: Record<string, unknown> }
+    >({
+      query: (data) => ({
+        url: '/requests/validate-input/',
+        method: 'POST',
+        body: data,
+      }),
+    }),
   }),
 });
 
@@ -314,4 +360,6 @@ export const {
   useSubmitClarificationMutation,
   useSelectCommissionerMutation,
   useDeleteRequestMutation,
+  useMarkRequestPaidMutation,
+  useValidateRequestInputMutation,
 } = userApi;

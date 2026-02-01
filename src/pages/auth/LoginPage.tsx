@@ -6,15 +6,17 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-// import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  rememberMe: z.boolean().optional(),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -23,8 +25,10 @@ export function LoginPage() {
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const from = (location.state as { from?: string })?.from;
 
@@ -39,7 +43,7 @@ export function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setError(null);
     try {
-      const loggedInUser = await login(data.email, data.password);
+      const loggedInUser = await login(data.email, data.password, rememberMe);
       
       // Redirect based on user role if no specific 'from' location
       if (!from) {
@@ -56,18 +60,38 @@ export function LoginPage() {
             navigate(ROUTES.REVIEWER_DASHBOARD, { replace: true });
             return;
           case 'commissioner':
-            navigate(ROUTES.COMMISSIONER_DASHBOARD, { replace: true });
+            navigate(ROUTES.COMMISSIONER_LOOKUP, { replace: true });
             return;
           default:
-            navigate(ROUTES.MY_REQUESTS, { replace: true });
+            navigate(ROUTES.HOME, { replace: true });
             return;
         }
       }
       
       // Use the 'from' location if specified
       navigate(from, { replace: true });
-    } catch {
-      setError('Invalid email or password. Please try again.');
+    } catch (err: any) {
+      // Handle different error formats
+      let errorMessage = 'Invalid email or password. Please try again.';
+      
+      if (err?.data?.non_field_errors && Array.isArray(err.data.non_field_errors)) {
+        errorMessage = err.data.non_field_errors[0];
+      } else if (err?.data?.detail) {
+        errorMessage = err.data.detail;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      // Show toast for pending approval message
+      if (errorMessage.includes('pending admin approval')) {
+        toast({
+          title: 'Account Pending Approval',
+          description: 'Your account is pending admin approval. You will be notified once approved.',
+          variant: 'destructive',
+        });
+      } else {
+        setError(errorMessage);
+      }
     }
   };
 
@@ -136,6 +160,20 @@ export function LoginPage() {
           {errors.password && (
             <p className="text-sm text-destructive">{errors.password.message}</p>
           )}
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="rememberMe"
+            checked={rememberMe}
+            onCheckedChange={(checked) => setRememberMe(checked === true)}
+          />
+          <Label 
+            htmlFor="rememberMe" 
+            className="text-sm font-normal cursor-pointer"
+          >
+            Remember me for 7 days
+          </Label>
         </div>
 
         <Button type="submit" className="w-full" disabled={isLoading}>

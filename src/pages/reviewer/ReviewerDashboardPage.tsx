@@ -15,7 +15,7 @@ import {
   TrendingUp,
   ArrowRight,
   FileCheck,
-  AlertCircle,
+  // AlertCircle,
   RefreshCw,
 } from 'lucide-react';
 
@@ -41,7 +41,7 @@ export function ReviewerDashboardPage() {
   });
 
   const pendingReviews = queue.slice(0, 5);
-  const priorityItems = queue.filter((r) => r.risk_flags.length > 0).slice(0, 3);
+  // const priorityItems = queue.filter((r) => r.risk_flags.length > 0).slice(0, 3);
 
   const dashboardStats = [
     {
@@ -191,7 +191,7 @@ export function ReviewerDashboardPage() {
         {/* Quick Stats */}
         <div className="space-y-6">
           {/* Priority Items */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-amber-500" />
@@ -236,7 +236,7 @@ export function ReviewerDashboardPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Today's Performance */}
           <Card>

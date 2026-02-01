@@ -15,7 +15,8 @@ import {
   useGetAffidavitTypeQuery, 
   useCreateRequestMutation, 
   useSubmitRequestMutation,
-  useAutoSaveRequestMutation
+  useAutoSaveRequestMutation,
+  useValidateRequestInputMutation
 } from '@/store/api/userApi';
 import { ROUTES } from '@/lib/constants';
 import { ArrowLeft, ArrowRight, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
@@ -85,6 +86,7 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
   const [createRequest, { isLoading: isCreating }] = useCreateRequestMutation();
   const [autoSaveRequest] = useAutoSaveRequestMutation();
   const [submitRequest] = useSubmitRequestMutation();
+  const [validateInput, { isLoading: isValidating }] = useValidateRequestInputMutation();
 
   useEffect(() => {
     try {
@@ -323,6 +325,45 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     
     try {
+      // Step 1: Validate inputs BEFORE submission using AI
+      const validationResult = await validateInput({
+        affidavit_type_id: Number(typeId),
+        answers_json: answers
+      }).unwrap();
+
+      // If validation fails, show the invalid fields and block submission
+      if (!validationResult.all_valid) {
+        const errorMessages: string[] = [];
+        const errorFieldSet = new Set<string>();
+
+        // Process validation notes to show user-friendly errors
+        validationResult.validation_notes.forEach((note) => {
+          const fieldLabel = allQuestions.find(q => 
+            q.field_name === note.field || q.id === note.field
+          )?.label || note.field;
+          
+          errorFieldSet.add(fieldLabel);
+          
+          let errorMsg = `**${fieldLabel}**: ${note.issue}`;
+          if (note.example) {
+            errorMsg += ` (e.g., "${note.example}")`;
+          }
+          errorMessages.push(errorMsg);
+        });
+
+        setValidationErrors(errorMessages);
+        setFieldErrors(errorFieldSet);
+        
+        toast.error('Please fix the following issues:', {
+          description: errorMessages.map(m => m.replace(/\*\*/g, '')).join('\n'),
+          duration: 10000,
+        });
+        
+        setIsSubmitting(false);
+        return; // Block submission
+      }
+
+      // Step 2: Create or update the request
       let idToSubmit = requestId;
 
       if (!idToSubmit) {
@@ -338,6 +379,7 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         }).unwrap();
       }
       
+      // Step 3: Submit the request for AI processing
       await submitRequest(idToSubmit).unwrap();
       
       localStorage.removeItem(`draft_${typeId}`);
@@ -566,9 +608,9 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting || isCreating}>
-              {(isSubmitting || isCreating) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Submit Request
+            <Button onClick={handleSubmit} disabled={isSubmitting || isCreating || isValidating}>
+              {(isSubmitting || isCreating || isValidating) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {isValidating ? 'Validating...' : 'Submit Request'}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           )}

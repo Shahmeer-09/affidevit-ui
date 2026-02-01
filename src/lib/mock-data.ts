@@ -24,7 +24,6 @@ export const mockUsers: Record<string, User> = {
     first_name: 'John',
     last_name: 'Doe',
     role: 'public',
-    phone: '555-0123',
     created_at: '2025-01-15T10:00:00Z',
   },
   commissioner: {
@@ -33,7 +32,6 @@ export const mockUsers: Record<string, User> = {
     first_name: 'Sarah',
     last_name: 'Williams',
     role: 'commissioner',
-    phone: '555-0456',
     commission_number: 'NC-2025-12345',
     commission_expiry: '2027-12-31',
     pdf_preferences: {

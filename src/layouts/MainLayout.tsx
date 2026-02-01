@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { FileText, Menu, User, LogOut, ChevronDown, Search, Stamp, ClipboardCheck, LayoutDashboard, Users, BookOpen, AlertTriangle, DollarSign } from 'lucide-react';
+import { FileText, Menu, User, LogOut, ChevronDown, Search, Stamp, ClipboardCheck, LayoutDashboard, Users, BookOpen, AlertTriangle, DollarSign, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,7 +32,6 @@ const getRoleNavigation = (role: string | undefined) => {
       ];
     case 'commissioner':
       return [
-        { label: 'Dashboard', href: ROUTES.COMMISSIONER_DASHBOARD, icon: LayoutDashboard },
         { label: 'Lookup Request', href: ROUTES.COMMISSIONER_LOOKUP, icon: Search },
         { label: 'My Stamps', href: ROUTES.COMMISSIONER_STAMPS, icon: Stamp },
       ];
@@ -62,7 +61,7 @@ export function MainLayout() {
     : (isLandingPage && user?.role === 'reviewer')
     ? [{ label: 'Dashboard', href: ROUTES.REVIEWER_DASHBOARD, icon: LayoutDashboard }]
     : (isLandingPage && user?.role === 'commissioner')
-    ? [{ label: 'Dashboard', href: ROUTES.COMMISSIONER_DASHBOARD, icon: LayoutDashboard }]
+    ? [{ label: 'Lookup Request', href: ROUTES.COMMISSIONER_LOOKUP, icon: Search }]
     : getRoleNavigation(user?.role);
 
   return (
@@ -97,12 +96,20 @@ export function MainLayout() {
             )}
 
             {!isAuthenticated && (
-              <Button variant="outline" size="sm" asChild>
-                <Link to={ROUTES.AFFIDAVIT_TYPES} className="flex items-center gap-1.5">
-                  <Search className="h-4 w-4" />
-                  Browse Affidavits
-                </Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={ROUTES.AFFIDAVIT_TYPES} className="flex items-center gap-1.5">
+                    <Search className="h-4 w-4" />
+                    Browse Affidavits
+                  </Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to={ROUTES.REGISTER_COMMISSIONER} className="flex items-center gap-1.5">
+                    <Briefcase className="h-4 w-4" />
+                    Commissioner
+                  </Link>
+                </Button>
+              </div>
             )}
 
             {isAuthenticated && user ? (
@@ -201,6 +208,12 @@ export function MainLayout() {
                     </Link>
                     <Link to={ROUTES.REGISTER} onClick={() => setMobileOpen(false)}>
                       <Button className="w-full">Get Started</Button>
+                    </Link>
+                    <Link to={ROUTES.REGISTER_COMMISSIONER} onClick={() => setMobileOpen(false)}>
+                      <Button variant="outline" className="w-full gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Join as Commissioner
+                      </Button>
                     </Link>
                   </>
                 )}

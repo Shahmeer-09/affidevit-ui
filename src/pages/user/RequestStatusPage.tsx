@@ -6,21 +6,13 @@ import { Separator } from '@/components/ui/separator';
 import { StatusBadge, TierBadge, SimpleTimeline } from '@/components/features';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
   useGetRequestQuery,
   useGetRequestStatusQuery,
   useSubmitClarificationMutation,
+  useMarkRequestPaidMutation,
   useSelectCommissionerMutation,
-  useGetPublicCommissionersQuery,
-  type PublicCommissioner,
 } from '@/store/api/userApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import {
@@ -37,7 +29,6 @@ import {
   Copy,
   Check,
   User,
-  Building2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -47,10 +38,7 @@ export function RequestStatusPage() {
   
   // Local state
   const [clarificationResponse, setClarificationResponse] = useState('');
-  const [selectedCommissioner, setSelectedCommissioner] = useState<string>('');
-  const [isPaid, setIsPaid] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [showCommissionerModal, setShowCommissionerModal] = useState(false);
 
   // API hooks
   const { data: request, isLoading, error, refetch } = useGetRequestQuery(Number(id), {
@@ -94,10 +82,8 @@ export function RequestStatusPage() {
 
   // Mutations
   const [submitClarification, { isLoading: isSubmittingClarification }] = useSubmitClarificationMutation();
-  const [selectCommissioner, { isLoading: isSelectingCommissioner }] = useSelectCommissionerMutation();
-  
-  // Get commissioners for selection
-  const { data: commissioners } = useGetPublicCommissionersQuery();
+  const [markPaid, { isLoading: isMarkingPaid }] = useMarkRequestPaidMutation();
+  const [selectCommissioner, { isLoading: isWithdrawing }] = useSelectCommissionerMutation();
 
   // Refetch when status changes from processing
   useEffect(() => {
@@ -106,6 +92,43 @@ export function RequestStatusPage() {
       refetch();
     }
   }, [statusData?.status, refetch]);
+
+  // Handle commissioner withdrawal
+  const handleWithdrawCommissioner = useCallback(async () => {
+    if (!id) {
+      console.error('Cannot withdraw commissioner: id is undefined');
+      toast.error('Error', {
+        description: 'Request ID is missing. Please refresh the page.',
+      });
+      return;
+    }
+    
+    const requestId = Number(id);
+    if (isNaN(requestId)) {
+      console.error('Cannot withdraw commissioner: invalid id', id);
+      toast.error('Error', {
+        description: 'Invalid request ID.',
+      });
+      return;
+    }
+    
+    try {
+      await selectCommissioner({
+        id: requestId,
+        commissioner_id: 0,
+      }).unwrap();
+      
+      toast.success('Commissioner Withdrawn', {
+        description: 'You can now select a different commissioner.',
+      });
+      refetch();
+    } catch (error) {
+      console.error('Error withdrawing commissioner:', error);
+      toast.error('Error', {
+        description: 'Failed to withdraw commissioner selection. Please try again.',
+      });
+    }
+  }, [id, selectCommissioner, refetch]);
 
   // Handle clarification submit
   const handleSubmitClarification = useCallback(async () => {
@@ -125,34 +148,22 @@ export function RequestStatusPage() {
     }
   }, [id, clarificationResponse, submitClarification, refetch]);
 
-  // Handle commissioner selection
-  const handleSelectCommissioner = useCallback(async (commissioner: PublicCommissioner) => {
+  // Handle payment
+  const handleMarkPaid = useCallback(async () => {
     if (!id) return;
-    setSelectedCommissioner(String(commissioner.id));
     
     try {
-      await selectCommissioner({ id: Number(id), commissioner_id: commissioner.id }).unwrap();
-      toast.success('Commissioner Selected', {
-        description: `${commissioner.full_name} has been assigned to your request.`,
+      await markPaid(Number(id)).unwrap();
+      toast.success('Payment Confirmed', {
+        description: 'Payment has been marked as complete. You can now download your document.',
       });
-      setShowCommissionerModal(false);
-      setSelectedCommissioner(''); // Reset state after successful selection
       refetch();
     } catch {
-      toast.error('Error', {
-        description: 'Failed to select commissioner.',
+      toast.error('Payment Failed', {
+        description: 'Failed to process payment. Please try again.',
       });
-      setSelectedCommissioner(''); // Reset state on error
     }
-  }, [id, selectCommissioner, refetch]);
-
-  // Handle payment (stub)
-  const handleMarkPaid = useCallback(() => {
-    setIsPaid(true);
-    toast.success('Payment Confirmed', {
-      description: 'Payment has been marked as complete.',
-    });
-  }, []);
+  }, [id, markPaid, refetch]);
 
   // Handle PDF download
   const handleDownloadPDF = useCallback(async () => {
@@ -312,7 +323,7 @@ export function RequestStatusPage() {
             </CardContent>
           </Card>
 
-          {/* Processing State with AI Logs */}
+          {/* Processing State - Simple UI */}
           {isProcessing && (
             <Card className="border-primary/50 bg-primary/5">
               <CardHeader className="pb-3">
@@ -321,7 +332,7 @@ export function RequestStatusPage() {
                   <div>
                     <CardTitle className="text-lg">Processing Your Request</CardTitle>
                     <CardDescription>
-                      {statusData?.processing_step?.label || 'Our AI is generating your affidavit...'}
+                      Our AI is generating your affidavit. This usually takes less than a minute.
                     </CardDescription>
                   </div>
                 </div>
@@ -331,7 +342,7 @@ export function RequestStatusPage() {
                 {statusData?.processing_step && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Step {statusData.processing_step.step} of 5</span>
+                      <span>{statusData.processing_step.label || 'Processing...'}</span>
                       <span>{statusData.processing_step.progress}%</span>
                     </div>
                     <div className="h-2 bg-primary/20 rounded-full overflow-hidden">
@@ -342,46 +353,9 @@ export function RequestStatusPage() {
                     </div>
                   </div>
                 )}
-                
-                {/* AI Logs */}
-                {statusData?.ai_logs && statusData.ai_logs.length > 0 && (
-                  <div className="space-y-2 mt-4">
-                    <p className="text-sm font-medium text-muted-foreground">Processing Steps:</p>
-                    <div className="space-y-2">
-                      {statusData.ai_logs.map((log) => (
-                        <div 
-                          key={log.id} 
-                          className={`flex items-center gap-3 p-3 rounded-lg text-sm ${
-                            log.status === 'success' 
-                              ? 'bg-green-500/10 border border-green-500/20' 
-                              : log.status === 'failed'
-                              ? 'bg-red-500/10 border border-red-500/20'
-                              : 'bg-amber-500/10 border border-amber-500/20'
-                          }`}
-                        >
-                          {log.status === 'success' ? (
-                            <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                          ) : log.status === 'failed' ? (
-                            <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
-                          ) : (
-                            <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">{log.node_type_display}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {log.model_name} • {log.total_tokens} tokens • {log.latency_ms}ms
-                            </p>
-                          </div>
-                          {log.error_message && (
-                            <p className="text-xs text-red-500 truncate max-w-[200px]" title={log.error_message}>
-                              {log.error_message}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <p className="text-sm text-muted-foreground text-center">
+                  Please wait while we prepare your document...
+                </p>
               </CardContent>
             </Card>
           )}
@@ -461,37 +435,57 @@ export function RequestStatusPage() {
                 <div className="space-y-2">
                   <Label>Commissioner</Label>
                   {request.commissioner ? (
-                    <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-                      <div className="flex items-center gap-3">
-                        {request.commissioner.profile_image_url ? (
-                          <img 
-                            src={request.commissioner.profile_image_url}
-                            alt={`${request.commissioner.first_name} ${request.commissioner.last_name}`}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <User className="h-5 w-5 text-primary" />
+                    <div className="space-y-3">
+                      <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="flex items-center gap-3">
+                          {request.commissioner.profile_image_url ? (
+                            <img 
+                              src={request.commissioner.profile_image_url}
+                              alt={`${request.commissioner.first_name} ${request.commissioner.last_name}`}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-5 w-5 text-primary" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium text-green-700 dark:text-green-300">
+                              {request.commissioner.first_name} {request.commissioner.last_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Commissioner assigned
+                            </p>
                           </div>
-                        )}
-                        <div>
-                          <p className="font-medium text-green-700 dark:text-green-300">
-                            {request.commissioner.first_name} {request.commissioner.last_name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Commissioner assigned
-                          </p>
                         </div>
                       </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleWithdrawCommissioner}
+                        disabled={isWithdrawing}
+                        className="w-full"
+                      >
+                        {isWithdrawing ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Withdrawing...
+                          </>
+                        ) : (
+                          'Withdraw Selection'
+                        )}
+                      </Button>
                     </div>
                   ) : (
                     <Button 
                       variant="outline" 
                       className="w-full justify-start"
-                      onClick={() => setShowCommissionerModal(true)}
+                      asChild
                     >
-                      <User className="h-4 w-4 mr-2" />
-                      Select a Commissioner
+                      <Link to={ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id))}>
+                        <User className="h-4 w-4 mr-2" />
+                        Select a Commissioner
+                      </Link>
                     </Button>
                   )}
                   <p className="text-xs text-muted-foreground">
@@ -503,7 +497,7 @@ export function RequestStatusPage() {
               )}
 
               {/* Payment Section - show for NEEDS_REVIEW or APPROVED when not paid */}
-              {canDownload && !isPaid && (
+              {canDownload && !request.is_paid && (
                 <div className="space-y-2">
                   <Separator />
                   <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20">
@@ -524,9 +518,14 @@ export function RequestStatusPage() {
                       variant="default" 
                       className="w-full"
                       onClick={handleMarkPaid}
+                      disabled={isMarkingPaid}
                     >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Pay Now
+                      {isMarkingPaid ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <CreditCard className="h-4 w-4 mr-2" />
+                      )}
+                      {isMarkingPaid ? 'Processing...' : 'Pay Now'}
                     </Button>
                     <p className="text-xs text-muted-foreground text-center mt-2">
                       Secure payment processing
@@ -535,8 +534,8 @@ export function RequestStatusPage() {
                 </div>
               )}
 
-              {/* Download Button - enabled after payment */}
-              {canDownload && isPaid && (
+              {/* Download Button - shown after payment */}
+              {canDownload && request.is_paid && (
                 <>
                   <Separator />
                   <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800 mb-3">
@@ -637,85 +636,6 @@ export function RequestStatusPage() {
           </Card>
         </div>
       </div>
-
-      {/* Commissioner Selection Modal */}
-      <Dialog open={showCommissionerModal} onOpenChange={(open) => {
-        setShowCommissionerModal(open);
-        if (!open) setSelectedCommissioner(''); // Reset state when modal closes
-      }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Select a Commissioner</DialogTitle>
-            <DialogDescription>
-              Choose a commissioner to visit in person to finalize your affidavit.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 mt-4">
-            {!commissioners || commissioners.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No commissioners available at this time.</p>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {commissioners.map((commissioner) => (
-                  <div 
-                    key={commissioner.id}
-                    className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => handleSelectCommissioner(commissioner)}
-                  >
-                    <div className="flex items-start gap-4">
-                      {commissioner.profile_image_url ? (
-                        <img 
-                          src={commissioner.profile_image_url}
-                          alt={commissioner.full_name}
-                          className="h-16 w-16 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="h-8 w-8 text-primary" />
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{commissioner.full_name}</h3>
-                        {commissioner.organization && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                            <Building2 className="h-3 w-3" />
-                            {commissioner.organization}
-                          </div>
-                        )}
-                        {commissioner.bio && (
-                          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                            {commissioner.bio}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Commission #: {commissioner.commission_number || 'N/A'}
-                        </p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        disabled={isSelectingCommissioner}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectCommissioner(commissioner);
-                        }}
-                      >
-                        {isSelectingCommissioner && selectedCommissioner === String(commissioner.id) ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          'Select'
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

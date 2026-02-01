@@ -7,6 +7,7 @@ export interface LoginResponse {
   access: string;
   refresh: string;
   user: User;
+  remember_me?: boolean;
 }
 
 export interface RegisterResponse {
@@ -15,12 +16,23 @@ export interface RegisterResponse {
   user: User;
 }
 
+export interface CommissionerRegisterResponse {
+  access: string;
+  refresh: string;
+  user: User;
+  message: string;
+}
+
 export interface ProfileUpdateRequest {
   first_name?: string;
   last_name?: string;
   phone?: string;
   commission_number?: string;
   commission_expiry?: string;
+  availability?: Record<string, unknown>;
+  bio?: string;
+  address?: string;
+  organization?: string;
 }
 
 export const authApi = baseApi.injectEndpoints({
@@ -43,6 +55,15 @@ export const authApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Register new commissioner with all details
+    registerCommissioner: builder.mutation<CommissionerRegisterResponse, FormData>({
+      query: (formData) => ({
+        url: '/auth/register/commissioner/',
+        method: 'POST',
+        body: formData,
+      }),
+    }),
+
     // Get current user profile
     getProfile: builder.query<User, void>({
       query: () => '/auth/profile/',
@@ -53,7 +74,7 @@ export const authApi = baseApi.injectEndpoints({
     updateProfile: builder.mutation<User, ProfileUpdateRequest>({
       query: (data) => ({
         url: '/auth/profile/',
-        method: 'PUT',
+        method: 'PATCH',
         body: data,
       }),
       invalidatesTags: ['Profile'],
@@ -64,6 +85,7 @@ export const authApi = baseApi.injectEndpoints({
 export const {
   useLoginMutation,
   useRegisterMutation,
+  useRegisterCommissionerMutation,
   useGetProfileQuery,
   useLazyGetProfileQuery,
   useUpdateProfileMutation,

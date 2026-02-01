@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TierBadge } from './TierBadge';
 import type { AffidavitType } from '@/types';
-import { ArrowRight, Zap, Eye, FileText } from 'lucide-react';
+import { ArrowRight, Zap,  FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '@/lib/constants';
 
@@ -55,12 +55,7 @@ export function AffidavitTypeCard({ type, variant = 'default', showActions = tru
               Instant
             </Badge>
           )}
-          {type.default_mode === 'review_first' && (
-            <Badge variant="outline" className="gap-1">
-              <Eye className="h-3 w-3" />
-              Reviewed
-            </Badge>
-          )}
+          
         </div>
         <CardTitle className="text-xl group-hover:text-primary transition-colors line-clamp-1">
           {type.name}

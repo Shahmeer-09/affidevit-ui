@@ -44,6 +44,7 @@ import {
   AlertCircle,
   CheckCircle,
   Eye,
+  List,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -307,6 +308,12 @@ export function AdminTypesPage() {
                           >
                             <Edit className="h-4 w-4 mr-2" />
                             Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => navigate(`/admin/affidavit-types/${type.id}/requests`)}
+                          >
+                            <List className="h-4 w-4 mr-2" />
+                            View Requests
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDuplicate(type.id)}>
                             <Copy className="h-4 w-4 mr-2" />

@@ -152,7 +152,7 @@ export function CommissionerRequestPage() {
       toast.success('Issue reported successfully');
       setRejectDialogOpen(false);
       setRejectReason('');
-      navigate(ROUTES.COMMISSIONER_DASHBOARD);
+      navigate(ROUTES.COMMISSIONER_LOOKUP);
     } catch (err: any) {
       toast.error(err?.data?.error || 'Failed to report issue');
     }
@@ -177,7 +177,7 @@ export function CommissionerRequestPage() {
               The request with code "{code}" was not found.
             </p>
             <Button asChild>
-              <Link to={ROUTES.COMMISSIONER_DASHBOARD}>Back to Dashboard</Link>
+              <Link to={ROUTES.COMMISSIONER_LOOKUP}>Back to Lookup</Link>
             </Button>
           </CardContent>
         </Card>
@@ -231,7 +231,7 @@ export function CommissionerRequestPage() {
             </p>
             <div className="flex gap-4 justify-center">
               <Button asChild>
-                <Link to={ROUTES.COMMISSIONER_DASHBOARD}>Back to Dashboard</Link>
+                <Link to={ROUTES.COMMISSIONER_LOOKUP}>Back to Lookup</Link>
               </Button>
             </div>
           </CardContent>

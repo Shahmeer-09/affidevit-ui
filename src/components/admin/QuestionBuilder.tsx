@@ -248,10 +248,11 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
             </TableBody>
           </Table>
 
-          <Button onClick={handleAddQuestion} variant="outline">
+          {/* Hidden: Add Question button */}
+          {/* <Button onClick={handleAddQuestion} variant="outline">
             <Plus className="h-4 w-4 mr-2" />
             Add Question
-          </Button>
+          </Button> */}
         </>
       )}
 

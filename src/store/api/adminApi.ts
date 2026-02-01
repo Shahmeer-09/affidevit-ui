@@ -62,6 +62,7 @@ export interface Commissioner {
   first_name: string;
   last_name: string;
   full_name: string;
+  phone_number: string | null;
   commission_number: string | null;
   commission_expiry: string | null;
   payout_rate: string;
@@ -70,7 +71,56 @@ export interface Commissioner {
   profile_image_url: string | null;
   bio: string;
   organization: string | null;
+  address: string | null;
   is_featured: boolean;
+  availability: Record<string, unknown>;
+  // Bank/Payment details
+  bank_name: string | null;
+  bank_branch: string | null;
+  bank_account_number: string | null;
+  bank_account_name: string | null;
+  payment_preference: string | null;
+}
+
+export interface CommissionerPaymentSummary extends Commissioner {
+  amount_to_pay: string;
+  unpaid_stamps_count: number;
+  total_earned: string;
+  total_paid: string;
+}
+
+export interface PaymentLog {
+  id: number;
+  commissioner: number;
+  commissioner_name: string;
+  amount_paid: string;
+  stamps_count: number;
+  paid_by: number | null;
+  paid_by_name: string | null;
+  payment_reference: string;
+  payment_method: string;
+  notes: string;
+  paid_at: string;
+}
+
+export interface MarkAsPaidRequest {
+  payment_reference?: string;
+  payment_method?: string;
+  notes?: string;
+}
+
+export interface MarkAsPaidResponse {
+  detail: string;
+  payment_log: PaymentLog;
+  total_amount: string;
+  stamps_count: number;
+}
+
+export interface SiteSettings {
+  id: number;
+  default_payout_amount: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Reviewer {
@@ -117,6 +167,48 @@ export interface UpdateStaffRequest {
   commission_expiry?: string;
   payout_rate?: number;
   is_featured?: boolean;
+}
+
+// Type Requests (Admin viewing generated affidavits)
+export interface ReviewerRejection {
+  reason: string;
+  reviewer: string;
+  timestamp: string;
+}
+
+export interface FrictionReportItem {
+  id: number;
+  reason: string;
+  commissioner: string;
+  created_at: string;
+  is_resolved: boolean;
+  resolution_notes: string;
+}
+
+export interface TypeRequestItem {
+  id: number;
+  request_code: string;
+  user: { id: number; username: string; email: string; first_name: string; last_name: string };
+  affidavit_type: { id: number; name: string; tier: string };
+  commissioner?: { id: number; username: string; first_name: string; last_name: string } | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  completed_at: string | null;
+  is_paid: boolean;
+  draft_text: string;
+  final_text: string;
+  reviewer_rejection: ReviewerRejection | null;
+  friction_reports: FrictionReportItem[];
+}
+
+export interface TypeRequestsParams {
+  typeId: number;
+  status?: string;
+  page?: number;
+  search?: string;
 }
 
 // Affidavit Type Admin types
@@ -439,6 +531,21 @@ export const adminApi = baseApi.injectEndpoints({
       invalidatesTags: ['AffidavitType'],
     }),
 
+    // Get all requests for an affidavit type (admin view)
+    getTypeRequests: builder.query<PaginatedResponse<TypeRequestItem>, TypeRequestsParams>({
+      query: ({ typeId, status, page, search }) => {
+        const params = new URLSearchParams();
+        if (status && status !== 'all') params.append('status', status);
+        if (page) params.append('page', page.toString());
+        if (search) params.append('search', search);
+        return `/admin/types/${typeId}/requests/?${params.toString()}`;
+      },
+      providesTags: (_result, _error, { typeId }) => [
+        { type: 'TypeRequests', id: typeId },
+        'TypeRequests',
+      ],
+    }),
+
     // =========================================================================
     // Document Upload & Policy Generation
     // =========================================================================
@@ -608,6 +715,43 @@ export const adminApi = baseApi.injectEndpoints({
       invalidatesTags: ['Commissioner'],
     }),
 
+    // Get commissioner payment summary
+    getCommissionerPaymentSummary: builder.query<CommissionerPaymentSummary, number>({
+      query: (id) => `/admin/commissioners/${id}/payment-summary/`,
+      providesTags: (_result, _error, id) => [{ type: 'Commissioner', id }, 'PaymentLogs'],
+    }),
+
+    // Get commissioner payment history
+    getCommissionerPaymentHistory: builder.query<PaginatedResponse<PaymentLog>, number>({
+      query: (id) => `/admin/commissioners/${id}/payment-history/`,
+      providesTags: ['PaymentLogs'],
+    }),
+
+    // Mark commissioner as paid
+    markCommissionerPaid: builder.mutation<MarkAsPaidResponse, { id: number; data: MarkAsPaidRequest }>({
+      query: ({ id, data }) => ({
+        url: `/admin/commissioners/${id}/mark-paid/`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Commissioner', id },
+        'Commissioner',
+        'PaymentLogs',
+      ],
+    }),
+
+    // Get all payment logs
+    getAllPaymentLogs: builder.query<PaginatedResponse<PaymentLog>, { page?: number; search?: string } | void>({
+      query: (params) => {
+        const queryParams: string[] = [];
+        if (params?.page) queryParams.push(`page=${params.page}`);
+        if (params?.search) queryParams.push(`search=${params.search}`);
+        return `/admin/payment-logs/${queryParams.length ? `?${queryParams.join('&')}` : ''}`;
+      },
+      providesTags: ['PaymentLogs'],
+    }),
+
     // =========================================================================
     // Staff Management - Reviewers
     // =========================================================================
@@ -765,6 +909,29 @@ export const adminApi = baseApi.injectEndpoints({
         'AffidavitType',
       ],
     }),
+
+    // =========================================================================
+    // Site Settings
+    // =========================================================================
+    
+    // Get site settings
+    getSiteSettings: builder.query<SiteSettings, void>({
+      query: () => '/admin/settings/',
+      providesTags: ['SiteSettings'],
+    }),
+
+    // Update site settings
+    updateSiteSettings: builder.mutation<
+      { success: boolean; message: string; settings: SiteSettings },
+      Partial<SiteSettings>
+    >({
+      query: (data) => ({
+        url: '/admin/settings/',
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: ['SiteSettings'],
+    }),
   }),
 });
 
@@ -786,6 +953,8 @@ export const {
   useUpdateAffidavitTypeMutation,
   useDeleteAffidavitTypeMutation,
   useDuplicateAffidavitTypeMutation,
+  // Type Requests (viewing generated affidavits)
+  useGetTypeRequestsQuery,
   // Document Upload & Policy Generation
   useUploadTemplateDocumentsMutation,
   useGetTemplateDocumentsQuery,
@@ -805,6 +974,11 @@ export const {
   useCreateCommissionerMutation,
   useUpdateCommissionerMutation,
   useDeleteCommissionerMutation,
+  // Commissioner Payments
+  useGetCommissionerPaymentSummaryQuery,
+  useGetCommissionerPaymentHistoryQuery,
+  useMarkCommissionerPaidMutation,
+  useGetAllPaymentLogsQuery,
   // Reviewers
   useGetReviewersQuery,
   useGetReviewerQuery,
@@ -820,5 +994,8 @@ export const {
   useDeleteAdminDecisionTreeNodeMutation,
   useGetAffidavitTypeDecisionPathsQuery,
   useCreateDecisionNodeForTypeMutation,
+  // Site Settings
+  useGetSiteSettingsQuery,
+  useUpdateSiteSettingsMutation,
 } = adminApi;
 

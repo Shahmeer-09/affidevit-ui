@@ -15,15 +15,15 @@ export function AuthLayout() {
       case 'reviewer':
         return <Navigate to={ROUTES.REVIEWER_DASHBOARD} replace />;
       case 'commissioner':
-        return <Navigate to={ROUTES.COMMISSIONER_DASHBOARD} replace />;
+        return <Navigate to={ROUTES.COMMISSIONER_LOOKUP} replace />;
       default:
         return <Navigate to={ROUTES.MY_REQUESTS} replace />;
     }
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Side - Branding */}
+    <div className="h-screen flex overflow-hidden">
+      {/* Left Side - Branding - Fixed */}
       <div className="hidden lg:flex lg:w-1/2 bg-primary relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary to-primary/80" />
         <div className="absolute inset-0 opacity-10">
@@ -68,10 +68,10 @@ export function AuthLayout() {
         </div>
       </div>
 
-      {/* Right Side - Auth Form */}
-      <div className="flex-1 flex flex-col">
+      {/* Right Side - Auth Form - Scrollable */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Mobile Header */}
-        <div className="lg:hidden p-4 border-b">
+        <div className="lg:hidden p-4 border-b flex-shrink-0">
           <Link to={ROUTES.HOME} className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
               <FileText className="h-5 w-5 text-primary-foreground" />
@@ -80,15 +80,17 @@ export function AuthLayout() {
           </Link>
         </div>
 
-        {/* Form Container */}
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-          <div className="w-full max-w-md">
-            <Outlet />
+        {/* Form Container - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="min-h-full flex items-center justify-center p-6 sm:p-12">
+            <div className="w-full max-w-md py-8">
+              <Outlet />
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 text-center text-sm text-muted-foreground">
+        <div className="p-4 text-center text-sm text-muted-foreground flex-shrink-0 border-t">
           <p>© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
         </div>
       </div>

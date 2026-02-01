@@ -106,5 +106,4 @@ export const {
   useApproveRequestMutation,
   useRejectRequestMutation,
   useRequestClarificationMutation,
-  useOverrideQAMutation,
 } = reviewerApi;

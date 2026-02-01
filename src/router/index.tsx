@@ -15,6 +15,7 @@ import { DecisionTreePage } from '@/pages/public/DecisionTreePage';
 // Auth Pages
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
+import { CommissionerRegisterPage } from '@/pages/auth/CommissionerRegisterPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 
@@ -22,12 +23,14 @@ import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 import { MyRequestsPage } from '@/pages/user/MyRequestsPage';
 import { RequestCreatePage } from '@/pages/user/RequestCreatePage';
 import { RequestStatusPage } from '@/pages/user/RequestStatusPage';
+import { SelectCommissionerPage } from '@/pages/user/SelectCommissionerPage';
 import { ProfilePage } from '@/pages/user/ProfilePage';
 
 // Commissioner Pages
 import { CommissionerDashboardPage } from '@/pages/commissioner/CommissionerDashboardPage';
 import { CommissionerRequestPage } from '@/pages/commissioner/CommissionerRequestPage';
 import { CommissionerStampsPage } from '@/pages/commissioner/CommissionerStampsPage';
+import { CommissionerSettingsPage } from '@/pages/commissioner/CommissionerSettingsPage';
 
 // Reviewer Pages
 import { ReviewerDashboardPage } from '@/pages/reviewer/ReviewerDashboardPage';
@@ -35,15 +38,17 @@ import { ReviewerQueuePage } from '@/pages/reviewer/ReviewerQueuePage';
 import { ReviewerDetailPage } from '@/pages/reviewer/ReviewerDetailPage';
 
 // Admin Pages
-import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
+// import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
 import { AdminTypesPage } from '@/pages/admin/AdminTypesPage';
 import { AdminTypeEditPage } from '@/pages/admin/AdminTypeEditPage';
+import { AdminTypeRequestsPage } from '@/pages/admin/AdminTypeRequestsPage';
 import { AdminAISettingsPage } from '@/pages/admin/AdminAISettingsPage';
 import { AdminDecisionTreePage } from '@/pages/admin/AdminDecisionTreePage';
 import { AdminCostsPage } from '@/pages/admin/AdminCostsPage';
 import { AdminLearningPage } from '@/pages/admin/AdminLearningPage';
 import { AdminFrictionPage } from '@/pages/admin/AdminFrictionPage';
 import { AdminStaffPage } from '@/pages/admin/AdminStaffPage';
+import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage';
 
 // Protected Route Wrapper
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -66,6 +71,7 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.LOGIN, element: <LoginPage /> },
       { path: ROUTES.REGISTER, element: <RegisterPage /> },
+      { path: ROUTES.REGISTER_COMMISSIONER, element: <CommissionerRegisterPage /> },
       { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage /> },
       { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage /> },
     ],
@@ -82,6 +88,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.MY_REQUESTS, element: <MyRequestsPage /> },
       { path: ROUTES.REQUEST_CREATE, element: <RequestCreatePage /> },
       { path: ROUTES.REQUEST_STATUS, element: <RequestStatusPage /> },
+      { path: ROUTES.REQUEST_SELECT_COMMISSIONER, element: <SelectCommissionerPage /> },
       { path: ROUTES.PROFILE, element: <ProfilePage /> },
     ],
   },
@@ -94,10 +101,11 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { path: ROUTES.COMMISSIONER_DASHBOARD, element: <CommissionerDashboardPage /> },
+      { path: ROUTES.COMMISSIONER_DASHBOARD, element: <Navigate to={ROUTES.COMMISSIONER_LOOKUP} replace /> },
       { path: ROUTES.COMMISSIONER_LOOKUP, element: <CommissionerDashboardPage /> },
       { path: ROUTES.COMMISSIONER_REQUEST, element: <CommissionerRequestPage /> },
       { path: ROUTES.COMMISSIONER_STAMPS, element: <CommissionerStampsPage /> },
+      { path: ROUTES.COMMISSIONER_SETTINGS, element: <CommissionerSettingsPage /> },
     ],
   },
   
@@ -123,15 +131,17 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { path: ROUTES.ADMIN_DASHBOARD, element: <AdminDashboardPage /> },
+      { path: ROUTES.ADMIN_DASHBOARD, element: <AdminTypesPage /> },
       { path: ROUTES.ADMIN_TYPES, element: <AdminTypesPage /> },
       { path: ROUTES.ADMIN_TYPE_EDIT, element: <AdminTypeEditPage /> },
+      { path: ROUTES.ADMIN_TYPE_REQUESTS, element: <AdminTypeRequestsPage /> },
       { path: ROUTES.ADMIN_AI_SETTINGS, element: <AdminAISettingsPage /> },
       { path: ROUTES.ADMIN_DECISION_TREE, element: <AdminDecisionTreePage /> },
       { path: ROUTES.ADMIN_COSTS, element: <AdminCostsPage /> },
       { path: ROUTES.ADMIN_LEARNING, element: <AdminLearningPage /> },
       { path: ROUTES.ADMIN_FRICTION, element: <AdminFrictionPage /> },
       { path: ROUTES.ADMIN_STAFF, element: <AdminStaffPage /> },
+      { path: ROUTES.ADMIN_SETTINGS, element: <AdminSettingsPage /> },
     ],
   },
   

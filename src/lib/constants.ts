@@ -17,6 +17,7 @@ export const ROUTES = {
   // Auth Routes
   LOGIN: '/login',
   REGISTER: '/register',
+  REGISTER_COMMISSIONER: '/register/commissioner',
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password/:uid/:token',
   
@@ -24,6 +25,7 @@ export const ROUTES = {
   MY_REQUESTS: '/my-requests',
   REQUEST_CREATE: '/request/new/:typeId',
   REQUEST_STATUS: '/request/:id',
+  REQUEST_SELECT_COMMISSIONER: '/request/:id/select-commissioner',
   REQUEST_PDF: '/request/:id/pdf',
   PROFILE: '/profile',
   
@@ -43,6 +45,7 @@ export const ROUTES = {
   ADMIN_DASHBOARD: '/admin',
   ADMIN_TYPES: '/admin/affidavit-types',
   ADMIN_TYPE_EDIT: '/admin/affidavit-types/:id',
+  ADMIN_TYPE_REQUESTS: '/admin/affidavit-types/:id/requests',
   ADMIN_AI_SETTINGS: '/admin/ai-settings',
   ADMIN_DECISION_TREE: '/admin/decision-tree',
   ADMIN_COSTS: '/admin/costs',
@@ -50,6 +53,7 @@ export const ROUTES = {
   ADMIN_FRICTION: '/admin/friction',
   ADMIN_USERS: '/admin/users',
   ADMIN_STAFF: '/admin/staff',
+  ADMIN_SETTINGS: '/admin/settings',
 } as const;
 
 // Status Configuration

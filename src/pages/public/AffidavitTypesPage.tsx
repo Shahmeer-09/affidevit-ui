@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PageHeader, AffidavitTypeCard, TierBadge } from '@/components/features';
+import { PageHeader, AffidavitTypeCard} from '@/components/features';
 import { useGetAffidavitTypesQuery } from '@/store/api/userApi';
 import { ROUTES, TIER_CONFIG } from '@/lib/constants';
 import { Search, Filter, Grid3X3, List, HelpCircle, Loader2 } from 'lucide-react';
@@ -108,21 +108,7 @@ export function AffidavitTypesPage() {
         </div>
       </div>
 
-      {/* Tier Legend */}
-      <Card className="mb-8">
-        <CardContent className="py-4">
-          <div className="flex flex-wrap gap-4 items-center">
-            <span className="text-sm font-medium text-muted-foreground">Complexity Tiers:</span>
-            {Object.entries(TIER_CONFIG).map(([tier, config]) => (
-              <div key={tier} className="flex items-center gap-2">
-                <TierBadge tier={tier as AffidavitTier} size="sm" />
-                <span className="text-xs text-muted-foreground hidden sm:inline">{config.description}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
+     
       {/* Results */}
       {filteredTypes.length === 0 ? (
         <Card>

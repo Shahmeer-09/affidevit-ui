@@ -23,7 +23,6 @@ import {
   useApproveRequestMutation,
   useRejectRequestMutation,
   useRequestClarificationMutation,
-  useOverrideQAMutation,
 } from '@/store/api/reviewerApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,12 +36,13 @@ import {
   XCircle,
   Clock,
   Loader2,
-  AlertTriangle,
   MessageSquare,
   Edit3,
   Eye,
-  Flag,
   Save,
+  User,
+  Mail,
+  Phone,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -71,18 +71,12 @@ export function ReviewerDetailPage() {
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [clarifyDialogOpen, setClarifyDialogOpen] = useState(false);
-  
-  // AI Wrong dialog state (when reviewer disagrees with AI)
-  const [aiWrongDialogOpen, setAiWrongDialogOpen] = useState(false);
-  const [selectedFlagIndex, setSelectedFlagIndex] = useState<number | null>(null);
-  const [aiWrongReason, setAiWrongReason] = useState('');
 
   // Fetch request details
   const {
     data: request,
     isLoading,
     isError,
-    refetch,
   } = useGetReviewRequestQuery(Number(id), {
     skip: !id,
   });
@@ -94,7 +88,6 @@ export function ReviewerDetailPage() {
   const [approveRequest, { isLoading: isApproving }] = useApproveRequestMutation();
   const [rejectRequest, { isLoading: isRejecting }] = useRejectRequestMutation();
   const [requestClarification, { isLoading: isClarifying }] = useRequestClarificationMutation();
-  const [overrideQA] = useOverrideQAMutation();
 
   // Find current position in queue for navigation
   const currentIndex = queue.findIndex((r) => r.id === Number(id));
@@ -222,88 +215,8 @@ export function ReviewerDetailPage() {
     }
   };
 
-  // Handle "AI is Right" - mark as false positive (AI flagged correctly, reviewer agrees)
-  const handleAIRight = async (flagIndex: number) => {
-    if (!request) return;
-
-    try {
-      await overrideQA({
-        request_id: request.id,
-        flag_index: flagIndex,
-        reason: 'AI flag confirmed correct - issue addressed',
-        ai_correct: true,
-      }).unwrap();
-
-      toast({
-        title: 'AI Confirmed',
-        description: 'The AI flag was marked as correct. Issue noted.',
-      });
-
-      refetch();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to confirm flag.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Handle "AI is Wrong" - open dialog to explain why AI was wrong
-  const handleAIWrong = (flagIndex: number) => {
-    setSelectedFlagIndex(flagIndex);
-    setAiWrongReason('');
-    setAiWrongDialogOpen(true);
-  };
-
-  // Confirm AI was wrong with reason
-  const confirmAIWrong = async () => {
-    if (!request || selectedFlagIndex === null) return;
-
-    try {
-      await overrideQA({
-        request_id: request.id,
-        flag_index: selectedFlagIndex,
-        reason: aiWrongReason || 'AI flag was incorrect - false positive',
-        ai_correct: false,
-      }).unwrap();
-
-      toast({
-        title: 'Flag Dismissed',
-        description: 'The AI flag was marked as incorrect (false positive).',
-      });
-
-      setAiWrongDialogOpen(false);
-      setSelectedFlagIndex(null);
-      setAiWrongReason('');
-      refetch();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to dismiss flag.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Calculate approval readiness
-  const qaFlags = request?.qa_flags_json || [];
-  const hasQAFlags = qaFlags.length > 0;
-  const hasUnreviewedFlags = qaFlags.some((flag: any) => !flag.overridden);
-  const canApprove = allChecked && !hasUnreviewedFlags;
-
-  // Debug logging
-  useEffect(() => {
-    console.log('[ReviewerDetailPage] Approval State:', {
-      allChecked,
-      checkedCount: checkedItems.length,
-      totalChecklist: reviewChecklist.length,
-      hasUnreviewedFlags,
-      qaFlagsCount: qaFlags.length,
-      canApprove,
-      qaFlags: qaFlags.map((f: any) => ({ type: f.type, overridden: f.overridden, ai_correct: f.ai_correct })),
-    });
-  }, [allChecked, checkedItems.length, hasUnreviewedFlags, canApprove, qaFlags]);
+  // Calculate approval readiness - reviewer just needs to complete checklist
+  const canApprove = allChecked;
 
   // Keyboard navigation
   useEffect(() => {
@@ -400,116 +313,38 @@ export function ReviewerDetailPage() {
         </div>
       </div>
 
-      {/* QA Flags Warning */}
-      {hasQAFlags && (
-        <Card className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+      {/* User Information Card */}
+      {request.user && (
+        <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
           <CardContent className="py-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5" />
+              <User className="h-5 w-5 text-blue-500 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium">QA Flags Detected</p>
-                <p className="text-sm text-muted-foreground mb-3">
-                  AI has flagged potential issues with this document. For each flag, indicate if the AI was correct or incorrect.
-                </p>
-                <div className="space-y-3">
-                  {qaFlags.map((flag: any, index: number) => {
-                    // Map flag types to user-friendly descriptions (QA checks AI OUTPUT quality)
-                    const flagDescriptions: Record<string, string> = {
-                      // AI Output Quality Issues (QA Checker)
-                      'template_deviation': 'AI didn\'t follow the template structure correctly',
-                      'legal_error': 'AI used incorrect legal language for Trinidad and Tobago',
-                      'disallowed_phrase': 'AI used a prohibited phrase from the policy/instructions',
-                      'formatting': 'AI produced formatting issues in the document',
-                      'hallucination': 'AI added information NOT provided by the user',
-                      'policy_violation': 'AI violated affidavit type policy rules',
-                      'instruction_violation': 'AI didn\'t follow system or affidavit instructions',
-                      'system_error': 'System error during QA check',
-                      'draft_error': 'Error generating the draft',
-                    };
-
-                    const flagType = flag.type || 'unknown';
-                    const description = flag.description || flagDescriptions[flagType] || 'AI output quality issue detected';
-                    const location = flag.location || '';
-                    const suggestion = flag.suggestion || '';
-
-                    return (
-                      <div
-                        key={index}
-                        className={`p-3 rounded-lg border ${
-                          flag.overridden 
-                            ? 'bg-muted/50 border-muted opacity-70' 
-                            : 'bg-white dark:bg-gray-900 border-amber-200 dark:border-amber-800'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Flag className={`h-4 w-4 shrink-0 ${flag.overridden ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`} />
-                              <span className="text-sm font-semibold capitalize">
-                                {flagType.replace(/_/g, ' ')}
-                              </span>
-                              {flag.severity && (
-                                <Badge 
-                                  variant={flag.severity === 'high' ? 'destructive' : flag.severity === 'medium' ? 'default' : 'secondary'}
-                                  className="text-xs"
-                                >
-                                  {flag.severity}
-                                </Badge>
-                              )}
-                              {flag.overridden && (
-                                <Badge 
-                                  variant={flag.ai_correct ? 'default' : 'secondary'} 
-                                  className="text-xs"
-                                >
-                                  {flag.ai_correct ? '✓ AI Correct' : '✗ AI Wrong'}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground ml-6 mb-2">
-                              {description}
-                            </p>
-                            {location && (
-                              <p className="text-xs bg-amber-100 dark:bg-amber-900/30 p-2 rounded ml-6 mb-2 font-mono">
-                                📍 "{location}"
-                              </p>
-                            )}
-                            {suggestion && (
-                              <p className="text-xs text-blue-600 dark:text-blue-400 ml-6">
-                                💡 Suggestion: {suggestion}
-                              </p>
-                            )}
-                            {flag.overridden && flag.override_reason && (
-                              <p className="text-xs text-muted-foreground ml-6 mt-2 italic">
-                                Note: {flag.override_reason}
-                              </p>
-                            )}
-                          </div>
-                          {!flag.overridden && (
-                            <div className="flex gap-2 shrink-0">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-green-600 border-green-300 hover:bg-green-50 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-950"
-                                onClick={() => handleAIRight(index)}
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                AI Correct
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-950"
-                                onClick={() => handleAIWrong(index)}
-                              >
-                                <XCircle className="h-4 w-4 mr-1" />
-                                AI Wrong
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <p className="font-medium mb-3">Requester Information</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Name</p>
+                      <p className="text-sm font-medium">
+                        {`${request.user.first_name} ${request.user.last_name}`.trim() || request.user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Email</p>
+                      <p className="text-sm font-medium">{request.user.email || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Phone</p>
+                      <p className="text-sm font-medium">{request.user.phone_number || 'N/A'}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -797,7 +632,6 @@ export function ReviewerDetailPage() {
               {!canApprove && (
                 <div className="text-xs text-muted-foreground text-center space-y-1">
                   {!allChecked && <p>✓ Complete all checklist items</p>}
-                  {hasUnreviewedFlags && <p>✓ Review all QA flags (mark as AI Correct or AI Wrong)</p>}
                 </div>
               )}
             </CardContent>
@@ -838,74 +672,6 @@ export function ReviewerDetailPage() {
           </Card>
         </div>
       </div>
-
-      {/* AI Wrong Confirmation Modal - Only shown when reviewer disagrees with AI */}
-      <Dialog open={aiWrongDialogOpen} onOpenChange={setAiWrongDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" />
-              Mark AI as Incorrect
-            </DialogTitle>
-            <DialogDescription>
-              You believe this AI flag is a <strong>false positive</strong>. Please explain why.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedFlagIndex !== null && qaFlags[selectedFlagIndex] && (
-            <div className="space-y-4">
-              {/* The Flag Being Dismissed */}
-              <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm font-medium mb-2">Flag you're dismissing:</p>
-                <div className="space-y-1">
-                  <p className="text-sm">
-                    <span className="font-medium capitalize">
-                      {(qaFlags[selectedFlagIndex].type || 'unknown').replace(/_/g, ' ')}
-                    </span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {qaFlags[selectedFlagIndex].description || 'No description provided'}
-                  </p>
-                  {qaFlags[selectedFlagIndex].location && (
-                    <p className="text-xs font-mono bg-red-100 dark:bg-red-900/50 p-2 rounded mt-2">
-                      📍 "{qaFlags[selectedFlagIndex].location}"
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Reason Input */}
-              <div className="space-y-2">
-                <Label htmlFor="ai-wrong-reason">Why is the AI incorrect? (required)</Label>
-                <Textarea
-                  id="ai-wrong-reason"
-                  placeholder="e.g., The information is actually consistent because..."
-                  value={aiWrongReason}
-                  onChange={(e) => setAiWrongReason(e.target.value)}
-                  rows={3}
-                />
-                <p className="text-xs text-muted-foreground">
-                  This feedback helps improve AI accuracy for future reviews.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAiWrongDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive"
-              onClick={confirmAIWrong}
-              disabled={!aiWrongReason.trim()}
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Confirm AI is Wrong
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

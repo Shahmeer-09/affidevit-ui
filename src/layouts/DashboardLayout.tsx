@@ -9,7 +9,7 @@ import {
   // Lightbulb,
   // AlertTriangle,
   LogOut,
- 
+  Settings,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -19,7 +19,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
+import { useGetCommissionersQuery } from '@/store/api/adminApi';
 import { ROUTES, APP_NAME } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -40,9 +42,9 @@ const navConfig: Record<PortalType, { title: string; items: NavItem[] }> = {
   commissioner: {
     title: 'Commissioner Portal',
     items: [
-      { label: 'Dashboard', href: ROUTES.COMMISSIONER_DASHBOARD, icon: LayoutDashboard },
       { label: 'Lookup Request', href: ROUTES.COMMISSIONER_LOOKUP, icon: Search },
       { label: 'Stamp History', href: ROUTES.COMMISSIONER_STAMPS, icon: History },
+      { label: 'Settings', href: ROUTES.COMMISSIONER_SETTINGS, icon: Settings },
     ],
   },
   reviewer: {
@@ -55,7 +57,7 @@ const navConfig: Record<PortalType, { title: string; items: NavItem[] }> = {
   admin: {
     title: 'Admin Portal',
     items: [
-      { label: 'Dashboard', href: ROUTES.ADMIN_DASHBOARD, icon: LayoutDashboard },
+      // { label: 'Dashboard', href: ROUTES.ADMIN_DASHBOARD, icon: LayoutDashboard },
       { label: 'Affidavit Types', href: ROUTES.ADMIN_TYPES, icon: FileText },
       { label: 'Decision Tree', href: ROUTES.ADMIN_DECISION_TREE, icon: GitBranch },
       { label: 'AI Settings', href: ROUTES.ADMIN_AI_SETTINGS, icon: Sparkles },
@@ -63,6 +65,7 @@ const navConfig: Record<PortalType, { title: string; items: NavItem[] }> = {
       // { label: 'Learning Reports', href: ROUTES.ADMIN_LEARNING, icon: Lightbulb },
       // { label: 'Friction Reports', href: ROUTES.ADMIN_FRICTION, icon: AlertTriangle },
       { label: 'Staff Management', href: ROUTES.ADMIN_STAFF, icon: Users },
+      { label: 'Settings', href: ROUTES.ADMIN_SETTINGS, icon: Settings },
     ],
   },
 };
@@ -73,6 +76,15 @@ export function DashboardLayout({ portal }: DashboardLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Fetch pending commissioners count for admin portal
+  const { data: commissionersData } = useGetCommissionersQuery(
+    { page: 1 },
+    { skip: portal !== 'admin' }
+  );
+  
+  // Count pending (not approved) commissioners
+  const pendingCommissioners = commissionersData?.results?.filter(c => !c.is_featured).length || 0;
 
   const config = navConfig[portal];
 
@@ -135,6 +147,7 @@ export function DashboardLayout({ portal }: DashboardLayoutProps) {
                 {config.items.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(item.href);
+                  const showBadge = item.href === ROUTES.ADMIN_STAFF && pendingCommissioners > 0;
 
                   if (collapsed) {
                     return (
@@ -143,17 +156,26 @@ export function DashboardLayout({ portal }: DashboardLayoutProps) {
                           <Link
                             to={item.href}
                             className={cn(
-                              'flex h-10 w-10 items-center justify-center rounded-lg mx-auto transition-colors',
+                              'flex h-10 w-10 items-center justify-center rounded-lg mx-auto transition-colors relative',
                               active
                                 ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                                 : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                             )}
                           >
                             <Icon className="h-5 w-5" />
+                            {showBadge && (
+                              <Badge 
+                                variant="destructive" 
+                                className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                              >
+                                {pendingCommissioners}
+                              </Badge>
+                            )}
                           </Link>
                         </TooltipTrigger>
                         <TooltipContent side="right">
                           {item.label}
+                          {showBadge && ` (${pendingCommissioners} pending)`}
                         </TooltipContent>
                       </Tooltip>
                     );
@@ -171,7 +193,12 @@ export function DashboardLayout({ portal }: DashboardLayoutProps) {
                       )}
                     >
                       <Icon className="h-5 w-5" />
-                      <span className="text-sm font-medium">{item.label}</span>
+                      <span className="text-sm font-medium flex-1">{item.label}</span>
+                      {showBadge && (
+                        <Badge variant="destructive" className="h-5 min-w-5 px-1.5 flex items-center justify-center text-xs">
+                          {pendingCommissioners}
+                        </Badge>
+                      )}
                     </Link>
                   );
                 })}

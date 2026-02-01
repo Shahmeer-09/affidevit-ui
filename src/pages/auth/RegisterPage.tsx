@@ -10,13 +10,16 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
 import { ROUTES } from '@/lib/constants';
-import { Eye, EyeOff, Loader2, Check } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Check, Briefcase } from 'lucide-react';
 
 const registerSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
-  phone: z.string().optional(),
+  phone: z.string().min(1, 'Phone number is required').regex(
+    /^(\+?1[-.]?)?868[-.]?\d{3}[-.]?\d{4}$/,
+    'Please enter a valid Trinidad and Tobago phone number (e.g., 868-123-4567)'
+  ),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -65,8 +68,20 @@ export function RegisterPage() {
         phone: data.phone,
       });
       navigate(ROUTES.MY_REQUESTS, { replace: true });
-    } catch {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      // Handle field-specific validation errors from backend
+      if (err?.data) {
+        const errors = err.data;
+        let errorMessage = '';
+        
+        // Build error message from field errors
+        if (errors.email) errorMessage += errors.email[0] + ' ';
+        if (errors.phone_number) errorMessage += errors.phone_number[0] + ' ';
+        
+        setError(errorMessage.trim() || 'Validation error occurred.');
+      } else {
+        setError(err?.message || 'An error occurred. Please try again.');
+      }
     }
   };
 
@@ -129,14 +144,17 @@ export function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="phone">Phone (optional)</Label>
+          <Label htmlFor="phone">Phone <span className="text-destructive">*</span></Label>
           <Input
             id="phone"
             type="tel"
-            placeholder="(555) 555-5555"
+            placeholder="868-123-4567"
             autoComplete="tel"
             {...register('phone')}
           />
+          {errors.phone && (
+            <p className="text-sm text-destructive">{errors.phone.message}</p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -216,6 +234,21 @@ export function RegisterPage() {
           Sign in
         </Link>
       </p>
+
+      {/* Commissioner Registration Link */}
+      <div className="mt-6 pt-6 border-t">
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground mb-3">
+            Are you a certified commissioner?
+          </p>
+          <Link to={ROUTES.REGISTER_COMMISSIONER}>
+            <Button variant="outline" className="w-full gap-2">
+              <Briefcase className="h-4 w-4" />
+              Sign up as Commissioner
+            </Button>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
