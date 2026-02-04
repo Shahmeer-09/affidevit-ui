@@ -12,7 +12,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/features';
 import { useAuth } from '@/hooks/use-auth';
-import { Loader2, CheckCircle, User, Shield, Bell, CreditCard } from 'lucide-react';
+import { Loader2, CheckCircle, User, Shield, Bell, CreditCard, MessageSquare, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/lib/constants';
 
 const profileSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -26,6 +28,7 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 export function ProfilePage() {
   const { user, updateProfile, isLoading } = useAuth();
   const [saved, setSaved] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -56,7 +59,7 @@ export function ProfilePage() {
       />
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full h-auto grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:w-auto lg:inline-grid lg:h-9">
           <TabsTrigger value="profile" className="gap-2">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Profile</span>
@@ -72,6 +75,10 @@ export function ProfilePage() {
           <TabsTrigger value="billing" className="gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Billing</span>
+          </TabsTrigger>
+          <TabsTrigger value="support" className="gap-2">
+            <MessageSquare className="h-4 w-4" />
+            <span className="hidden sm:inline">Support</span>
           </TabsTrigger>
         </TabsList>
 
@@ -224,6 +231,26 @@ export function ProfilePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <p className="text-muted-foreground">Billing settings coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="support">
+          <Card>
+            <CardHeader>
+              <CardTitle>Help & Support</CardTitle>
+              <CardDescription>
+                Get help with your requests or report issues
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col gap-4">
+                <p>Need assistance? Visit our support center to view existing tickets or submit a new one.</p>
+                <Button onClick={() => navigate(ROUTES.SUPPORT)} className="w-fit">
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Go to Support Center
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

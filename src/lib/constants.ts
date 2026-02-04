@@ -28,6 +28,8 @@ export const ROUTES = {
   REQUEST_SELECT_COMMISSIONER: '/request/:id/select-commissioner',
   REQUEST_PDF: '/request/:id/pdf',
   PROFILE: '/profile',
+  SUPPORT: '/tickets',
+  TICKET_DETAIL: '/tickets/:id',
   
   // Commissioner Routes
   COMMISSIONER_DASHBOARD: '/commissioner',
@@ -54,6 +56,8 @@ export const ROUTES = {
   ADMIN_USERS: '/admin/users',
   ADMIN_STAFF: '/admin/staff',
   ADMIN_SETTINGS: '/admin/settings',
+  ADMIN_SUPPORT: '/admin/tickets',
+  ADMIN_TICKET_DETAIL: '/admin/tickets/:id',
 } as const;
 
 // Status Configuration

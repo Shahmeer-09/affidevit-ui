@@ -15,6 +15,7 @@ import {
   Sparkles,
   GitBranch,
   Users,
+  // MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -65,6 +66,7 @@ const navConfig: Record<PortalType, { title: string; items: NavItem[] }> = {
       // { label: 'Learning Reports', href: ROUTES.ADMIN_LEARNING, icon: Lightbulb },
       // { label: 'Friction Reports', href: ROUTES.ADMIN_FRICTION, icon: AlertTriangle },
       { label: 'Staff Management', href: ROUTES.ADMIN_STAFF, icon: Users },
+      // { label: 'Support Tickets', href: ROUTES.ADMIN_SUPPORT, icon: MessageSquare },
       { label: 'Settings', href: ROUTES.ADMIN_SETTINGS, icon: Settings },
     ],
   },

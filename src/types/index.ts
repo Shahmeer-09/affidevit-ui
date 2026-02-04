@@ -110,8 +110,16 @@ export interface IntakeQuestion {
   validation?: {
     min?: number;
     max?: number;
+    min_length?: number;
+    max_length?: number;
     pattern?: string;
     message?: string;
+    input_mode?: 'text' | 'text_only' | 'numeric' | 'tel' | 'email';
+    max_date?: string; // 'today' or ISO date
+    min_date?: string; // 'today' or ISO date
+    date_constraint?: 'past_only' | 'past_or_today' | 'future_only';
+    check_future_date?: boolean; // Flag to check if month/year/day combo is in future
+    max_year_current?: boolean; // Flag to limit year to current year max
   };
   conditional?: {
     field: string;
@@ -465,4 +473,68 @@ export interface APIError {
   detail?: string;
   message?: string;
   errors?: Record<string, string[]>;
+}
+
+// ============================================
+// Ticket System Types
+// ============================================
+
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type TicketCategory = 'technical' | 'billing' | 'legal' | 'other';
+
+export interface TicketAttachment {
+  id: number;
+  file: string;
+  uploaded_at: string;
+}
+
+export interface TicketMessage {
+  id: number;
+  sender: number;
+  sender_name: string;
+  sender_role: UserRole;
+  sender_avatar?: string;
+  message: string;
+  created_at: string;
+  is_internal: boolean;
+}
+
+export interface Ticket {
+  id: number;
+  user: number;
+  user_name: string;
+  request?: number;
+  subject: string;
+  description: string;
+  category: TicketCategory;
+  category_display: string;
+  status: TicketStatus;
+  status_display: string;
+  priority: TicketPriority;
+  priority_display: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  messages?: TicketMessage[];
+  attachments?: TicketAttachment[];
+}
+
+export interface CreateTicketPayload {
+  subject: string;
+  description: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  request?: number;
+  files?: File[];
+}
+
+export interface TicketMessagePayload {
+  message: string;
+  is_internal?: boolean;
+}
+
+export interface TicketStatusPayload {
+  status?: TicketStatus;
+  priority?: TicketPriority;
 }

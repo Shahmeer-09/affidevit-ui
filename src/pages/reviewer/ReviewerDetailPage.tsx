@@ -22,7 +22,6 @@ import {
   useGetReviewQueueQuery,
   useApproveRequestMutation,
   useRejectRequestMutation,
-  useRequestClarificationMutation,
 } from '@/store/api/reviewerApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,7 +35,6 @@ import {
   XCircle,
   Clock,
   Loader2,
-  MessageSquare,
   Edit3,
   Eye,
   Save,
@@ -67,10 +65,8 @@ export function ReviewerDetailPage() {
   const [issueType, setIssueType] = useState('other');
   const [issueDescription, setIssueDescription] = useState('');
   const [rejectReason, setRejectReason] = useState('');
-  const [clarificationQuestion, setClarificationQuestion] = useState('');
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [clarifyDialogOpen, setClarifyDialogOpen] = useState(false);
 
   // Fetch request details
   const {
@@ -87,7 +83,6 @@ export function ReviewerDetailPage() {
   // Mutations
   const [approveRequest, { isLoading: isApproving }] = useApproveRequestMutation();
   const [rejectRequest, { isLoading: isRejecting }] = useRejectRequestMutation();
-  const [requestClarification, { isLoading: isClarifying }] = useRequestClarificationMutation();
 
   // Find current position in queue for navigation
   const currentIndex = queue.findIndex((r) => r.id === Number(id));
@@ -178,38 +173,6 @@ export function ReviewerDetailPage() {
       toast({
         title: 'Error',
         description: 'Failed to reject the request. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleClarification = async () => {
-    if (!request || !clarificationQuestion.trim()) return;
-
-    try {
-      await requestClarification({
-        request_id: request.id,
-        question: clarificationQuestion,
-      }).unwrap();
-
-      toast({
-        title: 'Clarification Requested',
-        description: 'The user has been notified to provide additional information.',
-      });
-
-      setClarifyDialogOpen(false);
-      setClarificationQuestion('');
-
-      // Navigate to next item or back to queue
-      if (nextItem) {
-        navigate(ROUTES.REVIEWER_DETAIL.replace(':id', String(nextItem.id)));
-      } else {
-        navigate(ROUTES.REVIEWER_QUEUE);
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to request clarification. Please try again.',
         variant: 'destructive',
       });
     }
@@ -547,46 +510,6 @@ export function ReviewerDetailPage() {
                 )}
                 {hasEdits ? 'Approve with Edits' : 'Approve'}
               </Button>
-
-              <Dialog open={clarifyDialogOpen} onOpenChange={setClarifyDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Request Clarification
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Request Clarification</DialogTitle>
-                    <DialogDescription>
-                      Send this request back to the user for additional information.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>What needs clarification?</Label>
-                      <Textarea
-                        placeholder="Describe what information is needed..."
-                        value={clarificationQuestion}
-                        onChange={(e) => setClarificationQuestion(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setClarifyDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleClarification}
-                      disabled={!clarificationQuestion.trim() || isClarifying}
-                    >
-                      {isClarifying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Send Request
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
 
               <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
                 <DialogTrigger asChild>

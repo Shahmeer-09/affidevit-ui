@@ -67,6 +67,8 @@ export function RegisterPage() {
         last_name: data.last_name,
         phone: data.phone,
       });
+      
+      // Registration successful - user is logged in automatically
       navigate(ROUTES.MY_REQUESTS, { replace: true });
     } catch (err: any) {
       // Handle field-specific validation errors from backend

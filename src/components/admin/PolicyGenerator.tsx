@@ -81,7 +81,25 @@ export function PolicyGenerator({
       setGeneratedPolicy(result);
 
       if (result.success) {
-        toast.success(result.saved ? 'Policy generated and saved!' : 'Policy generated successfully!');
+        // Check for save errors even if generation succeeded
+        if (result.save_error) {
+          toast.error(`Generated successfully, but failed to save: ${result.save_error}`, {
+            duration: 6000,
+          });
+          if (result.validation_details) {
+            console.error('Validation details:', result.validation_details);
+            // Show validation details in a more readable format
+            const validationMsg = typeof result.validation_details === 'string' 
+              ? result.validation_details 
+              : JSON.stringify(result.validation_details);
+            toast.error(`Validation: ${validationMsg}`, {
+              duration: 7000,
+            });
+          }
+        } else {
+          toast.success(result.saved ? 'Policy generated and saved!' : 'Policy generated successfully!');
+        }
+        
         // Convert detected_fields to IntakeQuestion format
         const questions = result.detected_fields.map((field: DetectedField, index: number) => ({
           id: field.id || `field_${index}_${Date.now()}`,
@@ -92,6 +110,8 @@ export function PolicyGenerator({
           placeholder: field.placeholder,
           help_text: field.help_text,
           options: field.options,
+          validation: field.validation,
+          show_if: field.show_if, // Conditional display logic
           order: index + 1,
         }));
         onPolicyGenerated?.(result, questions);
@@ -187,7 +207,9 @@ export function PolicyGenerator({
         <AlertTitle>How to Generate Policy</AlertTitle>
         <AlertDescription>
           <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-            <li>Upload 2-4 example affidavit documents (Word or PDF)</li>
+            <li><strong>Upload 15-20 example affidavit documents</strong> (Word or PDF) - more examples = better coverage of all scenarios</li>
+            <li>Include examples of ALL variations (different ownership types, relationships, circumstances)</li>
+            <li>AI will automatically detect scenarios and create conditional questions</li>
             <li>Optionally add context about this affidavit type</li>
             <li>Click "Generate Policy" to analyze examples with AI</li>
             <li>Review the generated template and detected fields</li>
@@ -202,9 +224,19 @@ export function PolicyGenerator({
           <CardTitle className="flex items-center gap-2">
             <FileUp className="h-5 w-5" />
             Template Documents
+            {documents.length > 0 && documents.length < 10 && (
+              <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
+                Need {10 - documents.length} more for best results
+              </Badge>
+            )}
+            {documents.length >= 10 && (
+              <Badge variant="default" className="ml-2 bg-green-100 text-green-800">
+                ✓ Good coverage
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription>
-            Upload example affidavits for AI to learn from. Supports .docx and .pdf files.
+            Upload 10-20 example affidavits covering ALL variations (different scenarios, ownership types, relationships). More examples = better conditional question generation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -346,6 +378,8 @@ export function PolicyGenerator({
               Upload at least one example document to enable policy generation
             </p>
           )}
+
+          
         </CardContent>
       </Card>
 

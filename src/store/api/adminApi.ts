@@ -337,6 +337,24 @@ export interface DetectedField {
   placeholder?: string;
   help_text?: string;
   options?: { value: string; label: string }[];
+  validation?: {
+    pattern?: string;
+    input_mode?: string;
+    min_length?: number;
+    max_length?: number;
+    min?: number;
+    max?: number;
+    max_date?: string;
+    min_date?: string;
+    date_constraint?: string;
+    message?: string;
+    check_future_date?: boolean;
+    max_year_current?: boolean;
+  };
+  show_if?: {
+    field: string;
+    value: string | string[];
+  };
 }
 
 export interface PolicyGenerationResult {
@@ -347,6 +365,8 @@ export interface PolicyGenerationResult {
   required_sections: string[];
   validation_rules: Record<string, unknown>[];
   analysis_notes: string;
+  scenario_mapping?: Record<string, string>; // Maps scenario keys to descriptions
+  identified_scenarios?: string[]; // List of detected scenarios
   saved?: boolean;
   error?: string;
 }

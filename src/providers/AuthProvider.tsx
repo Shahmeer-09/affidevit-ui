@@ -12,6 +12,7 @@ import {
   useRegisterMutation,
   useRegisterCommissionerMutation,
   useUpdateProfileMutation,
+  useVerifyOtpMutation,
 } from '@/store/api/authApi';
 
 interface AuthProviderProps {
@@ -27,8 +28,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [registerMutation, { isLoading: isRegisterLoading }] = useRegisterMutation();
   const [registerCommissionerMutation, { isLoading: isCommissionerRegisterLoading }] = useRegisterCommissionerMutation();
   const [updateProfileMutation, { isLoading: isUpdateLoading }] = useUpdateProfileMutation();
+  const [verifyOtpMutation, { isLoading: isVerifyLoading }] = useVerifyOtpMutation();
 
-  const isLoading = isLoginLoading || isRegisterLoading || isCommissionerRegisterLoading || isUpdateLoading;
+  const isLoading = isLoginLoading || isRegisterLoading || isCommissionerRegisterLoading || isUpdateLoading || isVerifyLoading;
 
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = false) => {
@@ -46,9 +48,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const register = useCallback(
     async (data: RegisterData) => {
       const result = await registerMutation(data).unwrap();
-      dispatch(setCredentials({ user: result.user, token: result.access }));
+      // If registration returns tokens (no OTP required), log the user in
+      if (result.access && result.user) {
+        dispatch(setCredentials({ user: result.user, token: result.access }));
+      }
+      return result;
     },
     [registerMutation, dispatch]
+  );
+
+  const verifyOtp = useCallback(
+    async (userId: string, code: string) => {
+      const result = await verifyOtpMutation({ user_id: userId, code }).unwrap();
+      if (result.access && result.user) {
+        dispatch(setCredentials({ user: result.user, token: result.access }));
+      }
+      return result;
+    },
+    [verifyOtpMutation, dispatch]
   );
 
   const registerCommissioner = useCallback(
@@ -68,8 +85,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
       
       // No tokens returned - just submit for approval
-      await registerCommissionerMutation(formData).unwrap();
-      // Return void - no user to return since not logged in
+      const result = await registerCommissionerMutation(formData).unwrap();
+      return result;
     },
     [registerCommissionerMutation]
   );
@@ -101,6 +118,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         logout,
         register,
         registerCommissioner,
+        verifyOtp,
         updateProfile,
         hasRole,
       }}

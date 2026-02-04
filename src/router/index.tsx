@@ -25,6 +25,8 @@ import { RequestCreatePage } from '@/pages/user/RequestCreatePage';
 import { RequestStatusPage } from '@/pages/user/RequestStatusPage';
 import { SelectCommissionerPage } from '@/pages/user/SelectCommissionerPage';
 import { ProfilePage } from '@/pages/user/ProfilePage';
+import { SupportPage } from '@/pages/user/SupportPage';
+import { TicketDetailPage } from '@/pages/user/TicketDetailPage';
 
 // Commissioner Pages
 import { CommissionerDashboardPage } from '@/pages/commissioner/CommissionerDashboardPage';
@@ -49,6 +51,7 @@ import { AdminLearningPage } from '@/pages/admin/AdminLearningPage';
 import { AdminFrictionPage } from '@/pages/admin/AdminFrictionPage';
 import { AdminStaffPage } from '@/pages/admin/AdminStaffPage';
 import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage';
+// import { AdminSupportPage } from '@/pages/admin/AdminSupportPage';
 
 // Protected Route Wrapper
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -90,6 +93,8 @@ export const router = createBrowserRouter([
       { path: ROUTES.REQUEST_STATUS, element: <RequestStatusPage /> },
       { path: ROUTES.REQUEST_SELECT_COMMISSIONER, element: <SelectCommissionerPage /> },
       { path: ROUTES.PROFILE, element: <ProfilePage /> },
+      { path: ROUTES.SUPPORT, element: <SupportPage /> },
+      { path: ROUTES.TICKET_DETAIL, element: <TicketDetailPage /> },
     ],
   },
   
@@ -142,6 +147,8 @@ export const router = createBrowserRouter([
       { path: ROUTES.ADMIN_FRICTION, element: <AdminFrictionPage /> },
       { path: ROUTES.ADMIN_STAFF, element: <AdminStaffPage /> },
       { path: ROUTES.ADMIN_SETTINGS, element: <AdminSettingsPage /> },
+      // { path: ROUTES.ADMIN_SUPPORT, element: <AdminSupportPage /> },
+      // { path: ROUTES.ADMIN_TICKET_DETAIL, element: <TicketDetailPage /> },
     ],
   },
   

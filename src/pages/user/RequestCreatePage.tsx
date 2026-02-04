@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -438,31 +438,145 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     // Use id if available, otherwise fallback to field_name or generate from index
     const fieldKey = field.id || field.field_name || `question_${fieldIndex}`;
     const value = answers[fieldKey];
+    const validation = field.validation;
+
+    // Helper to filter input based on input_mode
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      let newValue = e.target.value;
+      
+      // Apply input_mode restrictions in real-time
+      if (validation?.input_mode === 'text_only') {
+        // Only allow letters, spaces, hyphens, apostrophes, periods
+        newValue = newValue.replace(/[^a-zA-Z\s\-'\.]/g, '');
+      } else if (validation?.input_mode === 'numeric') {
+        // Only allow numbers
+        newValue = newValue.replace(/[^0-9]/g, '');
+      } else if (validation?.input_mode === 'tel') {
+        // Allow numbers, +, -, spaces, parentheses for phone
+        newValue = newValue.replace(/[^0-9+\-\s()]/g, '');
+      }
+      
+      // Apply max_length if specified
+      if (validation?.max_length && newValue.length > validation.max_length) {
+        newValue = newValue.slice(0, validation.max_length);
+      }
+      
+      handleFieldChange(fieldKey, newValue);
+    };
+
+    // Helper to get max date for date inputs
+    const getMaxDate = () => {
+      if (validation?.max_date === 'today' || validation?.date_constraint === 'past_only' || validation?.date_constraint === 'past_or_today') {
+        return new Date().toISOString().split('T')[0];
+      }
+      return undefined;
+    };
+
+    // Helper to get min date for date inputs
+    const getMinDate = () => {
+      if (validation?.min_date === 'today' || validation?.date_constraint === 'future_only') {
+        return new Date().toISOString().split('T')[0];
+      }
+      return undefined;
+    };
+
+    // Common input props with validation
+    const getInputProps = () => ({
+      id: fieldKey,
+      placeholder: field.placeholder,
+      value: (value as string) || '',
+      onChange: handleInputChange,
+      minLength: validation?.min_length,
+      maxLength: validation?.max_length,
+      pattern: validation?.pattern,
+      title: validation?.message,
+      inputMode: validation?.input_mode === 'numeric' ? 'numeric' as const : 
+                 validation?.input_mode === 'tel' ? 'tel' as const : 
+                 validation?.input_mode === 'email' ? 'email' as const : undefined,
+    });
 
     switch (field.type) {
       case 'text':
-        return <Input id={fieldKey} placeholder={field.placeholder} value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} />;
+        return <Input {...getInputProps()} />;
       case 'textarea':
-        return <Textarea id={fieldKey} placeholder={field.placeholder} value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} rows={4} />;
+        return <Textarea id={fieldKey} placeholder={field.placeholder} value={(value as string) || ''} onChange={handleInputChange} rows={4} />;
       case 'email':
-        return <Input id={fieldKey} type="email" placeholder={field.placeholder} value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} />;
+        return <Input {...getInputProps()} type="email" inputMode="email" />;
       case 'phone':
-        return <Input id={fieldKey} type="tel" placeholder={field.placeholder} value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} />;
-      case 'number':
-        return <Input id={fieldKey} type="number" placeholder={field.placeholder} value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} />;
+        return <Input {...getInputProps()} type="tel" inputMode="tel" />;
+      case 'number': {
+        const currentYear = new Date().getFullYear();
+        // If max_year_current is set, limit to current year
+        const maxValue = validation?.max_year_current ? currentYear : validation?.max;
+        
+        return (
+          <Input 
+            id={fieldKey} 
+            type="number" 
+            placeholder={field.placeholder} 
+            value={(value as string) || ''} 
+            onChange={(e) => {
+              const numValue = parseInt(e.target.value);
+              // Prevent future years for declaration year fields
+              if (validation?.check_future_date && validation?.max_year_current && numValue > currentYear) {
+                toast.error(`Year cannot be in the future (maximum: ${currentYear})`);
+                handleFieldChange(fieldKey, String(currentYear));
+                return;
+              }
+              handleFieldChange(fieldKey, e.target.value);
+            }}
+            min={validation?.min}
+            max={maxValue}
+          />
+        );
+      }
       case 'date':
-        return <Input id={fieldKey} type="date" value={(value as string) || ''} onChange={(e) => handleFieldChange(fieldKey, e.target.value)} />;
-      case 'select':
+        return (
+          <Input 
+            id={fieldKey} 
+            type="date" 
+            value={(value as string) || ''} 
+            onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+            max={getMaxDate()}
+            min={getMinDate()}
+          />
+        );
+      case 'select': {
+        // Filter out future months if this is a month field and year is current year
+        let selectOptions = field.options || [];
+        
+        if (validation?.check_future_date && (fieldKey.toLowerCase().includes('month') || field.label?.toLowerCase().includes('month'))) {
+          // Find the year field in answers to check if we need to filter
+          const yearFieldKey = Object.keys(answers).find(k => 
+            k.toLowerCase().includes('year') && !k.toLowerCase().includes('years')
+          );
+          if (yearFieldKey) {
+            const yearValue = parseInt(answers[yearFieldKey] as string);
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth(); // 0-indexed
+            
+            if (yearValue === currentYear) {
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                  'July', 'August', 'September', 'October', 'November', 'December'];
+              selectOptions = selectOptions.filter(opt => {
+                const monthIndex = monthNames.indexOf(opt.value);
+                return monthIndex <= currentMonth;
+              });
+            }
+          }
+        }
+        
         return (
           <Select value={(value as string) || ''} onValueChange={(val) => handleFieldChange(fieldKey, val)}>
-            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={field.placeholder || "Select an option"} /></SelectTrigger>
             <SelectContent>
-              {field.options?.map((option) => (
+              {selectOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         );
+      }
       case 'radio':
         return (
           <RadioGroup value={(value as string) || ''} onValueChange={(val) => handleFieldChange(fieldKey, val)}>

@@ -132,7 +132,6 @@ export function CommissionerRegisterPage() {
         description: 'Your request has been sent. Once approved by admin, you will be able to login.',
         variant: 'default',
       });
-      
       navigate(ROUTES.LOGIN, { replace: true });
     } catch (err: any) {
       // Handle field-specific validation errors from backend

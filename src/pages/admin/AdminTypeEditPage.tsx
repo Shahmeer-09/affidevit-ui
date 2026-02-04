@@ -190,9 +190,33 @@ export function AdminTypeEditPage() {
         toast.success('Affidavit type updated successfully');
       }
       setHasChanges(false);
-    } catch (error) {
-      toast.error('Failed to save affidavit type');
+    } catch (error: any) {
       console.error('Save error:', error);
+      
+      // Extract validation error details
+      let errorMessage = 'Failed to save affidavit type';
+      
+      if (error?.data?.intake_schema) {
+        // Validation error from serializer
+        const validationErrors = error.data.intake_schema;
+        if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+          errorMessage = `Validation Error: ${validationErrors[0]}`;
+        }
+      } else if (error?.data?.save_error) {
+        // Error from policy generation save
+        errorMessage = error.data.save_error;
+        if (error.data.validation_details) {
+          console.error('Validation details:', error.data.validation_details);
+        }
+      } else if (error?.data?.error) {
+        errorMessage = error.data.error;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
     }
   };
 

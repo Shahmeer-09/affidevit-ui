@@ -11,16 +11,29 @@ export interface LoginResponse {
 }
 
 export interface RegisterResponse {
-  access: string;
-  refresh: string;
-  user: User;
+  access?: string;
+  refresh?: string;
+  user?: User;
+  message?: string;
+  otp_sent?: boolean;
+  user_id?: string;
 }
 
 export interface CommissionerRegisterResponse {
-  access: string;
-  refresh: string;
-  user: User;
+  access?: string;
+  refresh?: string;
+  user?: User;
   message: string;
+  otp_sent?: boolean;
+  user_id?: string;
+}
+
+export interface VerifyOtpResponse {
+  success: boolean;
+  message: string;
+  user?: User;
+  refresh?: string;
+  access?: string;
 }
 
 export interface ProfileUpdateRequest {
@@ -64,6 +77,15 @@ export const authApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Verify OTP
+    verifyOtp: builder.mutation<VerifyOtpResponse, { user_id: string; code: string }>({
+      query: (data) => ({
+        url: '/auth/verify-otp/',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
     // Get current user profile
     getProfile: builder.query<User, void>({
       query: () => '/auth/profile/',
@@ -86,6 +108,7 @@ export const {
   useLoginMutation,
   useRegisterMutation,
   useRegisterCommissionerMutation,
+  useVerifyOtpMutation,
   useGetProfileQuery,
   useLazyGetProfileQuery,
   useUpdateProfileMutation,

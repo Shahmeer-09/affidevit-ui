@@ -7,8 +7,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User>;
   logout: () => void;
-  register: (data: RegisterData) => Promise<void>;
-  registerCommissioner: (data: CommissionerRegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<any>;
+  registerCommissioner: (data: CommissionerRegisterData) => Promise<any>;
+  verifyOtp: (userId: string, code: string) => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   hasRole: (roles: UserRole | UserRole[]) => boolean;
 }
