@@ -108,6 +108,58 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     };
   }, []);
 
+  // Prefill declaration date fields with current date (readonly)
+  useEffect(() => {
+    if (!type?.intake_schema) return;
+    
+    const now = new Date();
+    const currentYear = now.getFullYear().toString();
+    const currentMonth = now.toLocaleString('en-US', { month: 'long' }); // "February"
+    const currentDay = now.getDate().toString().padStart(2, '0'); // "05"
+    
+    // Check if any declaration date fields exist in the schema
+    const schema = type.intake_schema;
+    const hasDeclarationYear = schema.some((q: IntakeQuestion) => 
+      (q.id || q.field_name || '').toLowerCase().includes('declaration_year'));
+    const hasDeclarationMonth = schema.some((q: IntakeQuestion) => 
+      (q.id || q.field_name || '').toLowerCase().includes('declaration_month'));
+    const hasDeclarationDay = schema.some((q: IntakeQuestion) => 
+      (q.id || q.field_name || '').toLowerCase().includes('declaration_day'));
+    const hasDeclarationDate = schema.some((q: IntakeQuestion) => 
+      (q.id || q.field_name || '').toLowerCase() === 'declaration_date');
+    
+    const prefillValues: Record<string, string> = {};
+    
+    // Find exact field IDs and prefill
+    schema.forEach((q: IntakeQuestion) => {
+      const fieldId = (q.id || q.field_name || '').toLowerCase();
+      if (fieldId.includes('declaration_year')) {
+        prefillValues[q.id || q.field_name || ''] = currentYear;
+      } else if (fieldId.includes('declaration_month')) {
+        prefillValues[q.id || q.field_name || ''] = currentMonth;
+      } else if (fieldId.includes('declaration_day')) {
+        prefillValues[q.id || q.field_name || ''] = currentDay;
+      } else if (fieldId === 'declaration_date') {
+        prefillValues[q.id || q.field_name || ''] = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      }
+    });
+    
+    // Only update if there are values to prefill and they're not already set
+    if (Object.keys(prefillValues).length > 0) {
+      setAnswers(prev => {
+        const updated = { ...prev };
+        let changed = false;
+        for (const [key, value] of Object.entries(prefillValues)) {
+          if (!prev[key]) {
+            updated[key] = value;
+            changed = true;
+          }
+        }
+        return changed ? updated : prev;
+      });
+    }
+  }, [type?.intake_schema]);
+
   if (!typeId || isNaN(Number(typeId))) {
     return (
       <div className="container py-12">
@@ -439,9 +491,20 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     const fieldKey = field.id || field.field_name || `question_${fieldIndex}`;
     const value = answers[fieldKey];
     const validation = field.validation;
+    
+    // Check if this is a declaration date field (should be readonly and prefilled)
+    const fieldKeyLower = fieldKey.toLowerCase();
+    const isDeclarationDateField = 
+      fieldKeyLower.includes('declaration_year') ||
+      fieldKeyLower.includes('declaration_month') ||
+      fieldKeyLower.includes('declaration_day') ||
+      fieldKeyLower === 'declaration_date';
 
     // Helper to filter input based on input_mode
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      // Don't allow changes to declaration date fields
+      if (isDeclarationDateField) return;
+      
       let newValue = e.target.value;
       
       // Apply input_mode restrictions in real-time
@@ -483,16 +546,19 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     // Common input props with validation
     const getInputProps = () => ({
       id: fieldKey,
-      placeholder: field.placeholder,
+      placeholder: isDeclarationDateField ? undefined : field.placeholder,
       value: (value as string) || '',
       onChange: handleInputChange,
       minLength: validation?.min_length,
       maxLength: validation?.max_length,
       pattern: validation?.pattern,
-      title: validation?.message,
+      title: isDeclarationDateField ? 'This field is automatically set to today\'s date' : validation?.message,
       inputMode: validation?.input_mode === 'numeric' ? 'numeric' as const : 
                  validation?.input_mode === 'tel' ? 'tel' as const : 
                  validation?.input_mode === 'email' ? 'email' as const : undefined,
+      readOnly: isDeclarationDateField,
+      disabled: isDeclarationDateField,
+      className: isDeclarationDateField ? 'bg-muted cursor-not-allowed' : undefined,
     });
 
     switch (field.type) {
@@ -508,6 +574,21 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         const currentYear = new Date().getFullYear();
         // If max_year_current is set, limit to current year
         const maxValue = validation?.max_year_current ? currentYear : validation?.max;
+        
+        // Declaration date fields should be readonly with prefilled values
+        if (isDeclarationDateField) {
+          return (
+            <Input 
+              id={fieldKey} 
+              type="number" 
+              value={(value as string) || ''} 
+              readOnly
+              disabled
+              className="bg-muted cursor-not-allowed"
+              title="This field is automatically set to today's date"
+            />
+          );
+        }
         
         return (
           <Input 
@@ -531,6 +612,20 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         );
       }
       case 'date':
+        // Declaration date fields should be readonly with prefilled values
+        if (isDeclarationDateField) {
+          return (
+            <Input 
+              id={fieldKey} 
+              type="date" 
+              value={(value as string) || ''} 
+              readOnly
+              disabled
+              className="bg-muted cursor-not-allowed"
+              title="This field is automatically set to today's date"
+            />
+          );
+        }
         return (
           <Input 
             id={fieldKey} 
@@ -542,6 +637,21 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
           />
         );
       case 'select': {
+        // Declaration date fields should be readonly with prefilled values
+        if (isDeclarationDateField) {
+          return (
+            <Input 
+              id={fieldKey} 
+              type="text" 
+              value={(value as string) || ''} 
+              readOnly
+              disabled
+              className="bg-muted cursor-not-allowed"
+              title="This field is automatically set to today's date"
+            />
+          );
+        }
+        
         // Filter out future months if this is a month field and year is current year
         let selectOptions = field.options || [];
         

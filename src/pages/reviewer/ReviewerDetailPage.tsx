@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import {
   Dialog,
   DialogContent,
@@ -356,8 +357,24 @@ export function ReviewerDetailPage() {
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
                 Document
+                {hasEdits && (
+                  <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300">
+                    Edited
+                  </Badge>
+                )}
               </CardTitle>
               <div className="flex gap-2">
+                {isEditing && hasEdits && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditing(false)}
+                    className="text-green-600 border-green-300 hover:bg-green-50"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save & Preview
+                  </Button>
+                )}
                 <Button
                   variant={isEditing ? 'default' : 'outline'}
                   size="sm"
@@ -388,11 +405,10 @@ export function ReviewerDetailPage() {
                 <TabsContent value="document">
                   {isEditing ? (
                     <div className="space-y-4">
-                      <Textarea
-                        value={editedText}
-                        onChange={(e) => setEditedText(e.target.value)}
-                        className="min-h-[500px] font-mono text-sm"
-                        placeholder="Document text..."
+                      <RichTextEditor
+                        content={editedText}
+                        onChange={(html) => setEditedText(html)}
+                        className="min-h-[500px]"
                       />
                       {hasEdits && (
                         <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
@@ -432,19 +448,44 @@ export function ReviewerDetailPage() {
                       )}
                     </div>
                   ) : (
-                    <div 
-                      className="bg-white dark:bg-gray-900 border rounded-lg p-8 min-h-[500px] prose prose-sm dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ 
-                        __html: request.draft_text 
-                          ? request.draft_text
-                              // Convert markdown-style formatting to HTML if needed
-                              .replace(/\n\n/g, '</p><p>')
-                              .replace(/\n/g, '<br/>')
-                              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                              .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                          : '<p class="text-muted-foreground">No document text available.</p>' 
-                      }}
-                    />
+                    <div className="space-y-4">
+                      {hasEdits && (
+                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <Save className="h-4 w-4 text-blue-500" />
+                          <span className="text-sm text-blue-700 dark:text-blue-300">
+                            Showing edited version. Changes will be saved when you approve.
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto text-xs"
+                            onClick={() => setEditedText(request.draft_text || '')}
+                          >
+                            Revert to Original
+                          </Button>
+                        </div>
+                      )}
+                      <div 
+                        className="document-preview bg-white dark:bg-gray-900 border rounded-lg p-8 min-h-[500px] prose prose-sm dark:prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{ 
+                          __html: (hasEdits ? editedText : request.draft_text)
+                            ? (() => {
+                                const text = hasEdits ? editedText : request.draft_text;
+                                // If content already has HTML tags, use it as-is
+                                if (text.includes('<p>') || text.includes('<div>') || text.includes('<br')) {
+                                  return text;
+                                }
+                                // Otherwise, convert markdown-style formatting to HTML
+                                return text
+                                  .replace(/\n\n/g, '</p><p>')
+                                  .replace(/\n/g, '<br/>')
+                                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                                  .replace(/\*(.+?)\*/g, '<em>$1</em>');
+                              })()
+                            : '<p class="text-muted-foreground">No document text available.</p>' 
+                        }}
+                      />
+                    </div>
                   )}
                 </TabsContent>
 
