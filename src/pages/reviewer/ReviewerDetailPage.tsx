@@ -468,21 +468,22 @@ export function ReviewerDetailPage() {
                       <div 
                         className="document-preview bg-white dark:bg-gray-900 border rounded-lg p-8 min-h-[500px] prose prose-sm dark:prose-invert max-w-none"
                         dangerouslySetInnerHTML={{ 
-                          __html: (hasEdits ? editedText : request.draft_text)
-                            ? (() => {
-                                const text = hasEdits ? editedText : request.draft_text;
-                                // If content already has HTML tags, use it as-is
-                                if (text.includes('<p>') || text.includes('<div>') || text.includes('<br')) {
-                                  return text;
-                                }
-                                // Otherwise, convert markdown-style formatting to HTML
-                                return text
-                                  .replace(/\n\n/g, '</p><p>')
-                                  .replace(/\n/g, '<br/>')
-                                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                                  .replace(/\*(.+?)\*/g, '<em>$1</em>');
-                              })()
-                            : '<p class="text-muted-foreground">No document text available.</p>' 
+                          __html: (() => {
+                            const text = hasEdits ? editedText : request.draft_text;
+                            if (!text) {
+                              return '<p class="text-muted-foreground">No document text available.</p>';
+                            }
+                            // If content already has HTML tags, use it as-is
+                            if (text.includes('<p>') || text.includes('<div>') || text.includes('<br') || text.includes('<ol>') || text.includes('<ul>') || text.includes('<li>')) {
+                              return text;
+                            }
+                            // Otherwise, convert markdown-style formatting to HTML
+                            return text
+                              .replace(/\n\n/g, '</p><p>')
+                              .replace(/\n/g, '<br/>')
+                              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                              .replace(/\*(.+?)\*/g, '<em>$1</em>');
+                          })()
                         }}
                       />
                     </div>

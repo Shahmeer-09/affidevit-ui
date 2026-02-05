@@ -119,14 +119,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     
     // Check if any declaration date fields exist in the schema
     const schema = type.intake_schema;
-    const hasDeclarationYear = schema.some((q: IntakeQuestion) => 
-      (q.id || q.field_name || '').toLowerCase().includes('declaration_year'));
-    const hasDeclarationMonth = schema.some((q: IntakeQuestion) => 
-      (q.id || q.field_name || '').toLowerCase().includes('declaration_month'));
-    const hasDeclarationDay = schema.some((q: IntakeQuestion) => 
-      (q.id || q.field_name || '').toLowerCase().includes('declaration_day'));
-    const hasDeclarationDate = schema.some((q: IntakeQuestion) => 
-      (q.id || q.field_name || '').toLowerCase() === 'declaration_date');
     
     const prefillValues: Record<string, string> = {};
     
