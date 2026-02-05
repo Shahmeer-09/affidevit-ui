@@ -369,6 +369,8 @@ export interface PolicyGenerationResult {
   identified_scenarios?: string[]; // List of detected scenarios
   saved?: boolean;
   error?: string;
+  save_error?: string;
+  validation_details?: string | Record<string, unknown>;
 }
 
 export interface PolicyGenerationTaskResponse {

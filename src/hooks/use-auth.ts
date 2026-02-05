@@ -9,7 +9,7 @@ interface AuthContextType {
   logout: () => void;
   register: (data: RegisterData) => Promise<any>;
   registerCommissioner: (data: CommissionerRegisterData) => Promise<any>;
-  verifyOtp: (userId: string, code: string) => Promise<void>;
+  verifyOtp: (userId: string, code: string) => Promise<any>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   hasRole: (roles: UserRole | UserRole[]) => boolean;
 }
