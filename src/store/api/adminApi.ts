@@ -100,7 +100,7 @@ export interface PaymentLog {
   paid_by_name: string | null;
   payment_reference: string;
   payment_method: string;
-  payment_date: string;
+  paid_at: string;
   receipt_url: string | null;
   notes: string | null;
   created_at: string;

@@ -18,7 +18,6 @@ import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import {
   ArrowLeft,
   Download,
-  FileText,
   Clock,
   AlertCircle,
   Loader2,
