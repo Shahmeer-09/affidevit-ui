@@ -19,9 +19,22 @@ import {
   useValidateRequestInputMutation
 } from '@/store/api/userApi';
 import { ROUTES } from '@/lib/constants';
-import { ArrowLeft, ArrowRight, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Loader2, AlertCircle, CheckCircle, Eye } from 'lucide-react';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from 'sonner';
 import type { IntakeQuestion } from '@/types';
+import { useAuth } from '@/hooks/use-auth';
+import { PaymentIdentityModal } from '@/components/auth/PaymentIdentityModal';
+import { DraftPreviewModal } from '@/components/features/DraftPreviewModal';
 
 type DraftState = {
   answers: Record<string, unknown>;
@@ -69,6 +82,7 @@ export function RequestCreatePage() {
 
 function RequestCreateForm({ typeId }: { typeId?: string }) {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const initialDraft = loadDraft(typeId);
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>(initialDraft.answers);
@@ -77,6 +91,11 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Set<string>>(new Set());
   const [requestId, setRequestId] = useState<number | null>(initialDraft.requestId);
+  const [showDateConfirmation, setShowDateConfirmation] = useState(false);
+  const [confirmationMessage, setConfirmationMessage] = useState({ entered: '', today: '' });
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showDraftPreviewModal, setShowDraftPreviewModal] = useState(false);
+  const [generatedDraftText, setGeneratedDraftText] = useState<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: type, isLoading: isLoadingType, error: typeError } = useGetAffidavitTypeQuery(Number(typeId), {
@@ -107,50 +126,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
   }, []);
-
-  // Prefill declaration date fields with current date (readonly)
-  useEffect(() => {
-    if (!type?.intake_schema) return;
-    
-    const now = new Date();
-    const currentYear = now.getFullYear().toString();
-    const currentMonth = now.toLocaleString('en-US', { month: 'long' }); // "February"
-    const currentDay = now.getDate().toString().padStart(2, '0'); // "05"
-    
-    // Check if any declaration date fields exist in the schema
-    const schema = type.intake_schema;
-    
-    const prefillValues: Record<string, string> = {};
-    
-    // Find exact field IDs and prefill
-    schema.forEach((q: IntakeQuestion) => {
-      const fieldId = (q.id || q.field_name || '').toLowerCase();
-      if (fieldId.includes('declaration_year')) {
-        prefillValues[q.id || q.field_name || ''] = currentYear;
-      } else if (fieldId.includes('declaration_month')) {
-        prefillValues[q.id || q.field_name || ''] = currentMonth;
-      } else if (fieldId.includes('declaration_day')) {
-        prefillValues[q.id || q.field_name || ''] = currentDay;
-      } else if (fieldId === 'declaration_date') {
-        prefillValues[q.id || q.field_name || ''] = now.toISOString().split('T')[0]; // YYYY-MM-DD
-      }
-    });
-    
-    // Only update if there are values to prefill and they're not already set
-    if (Object.keys(prefillValues).length > 0) {
-      setAnswers(prev => {
-        const updated = { ...prev };
-        let changed = false;
-        for (const [key, value] of Object.entries(prefillValues)) {
-          if (!prev[key]) {
-            updated[key] = value;
-            changed = true;
-          }
-        }
-        return changed ? updated : prev;
-      });
-    }
-  }, [type?.intake_schema]);
 
   if (!typeId || isNaN(Number(typeId))) {
     return (
@@ -269,47 +244,50 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         lastSaved: now.toISOString(),
       }));
 
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = setTimeout(async () => {
-        if (!requestId) {
-          try {
-            const result = await createRequest({ 
-              affidavit_type: Number(typeId),
-              answers_json: newAnswers 
-            }).unwrap();
-            
-            setRequestId(result.id);
-            localStorage.setItem(`draft_${typeId}`, JSON.stringify({
-              answers: newAnswers,
-              requestId: result.id,
-              lastSaved: new Date().toISOString(),
-            }));
-          } catch (err) {
-            console.error('Failed to auto-create draft', err);
-          }
-        } else {
-          try {
-            await autoSaveRequest({
-              id: requestId,
-              data: { answers_json: newAnswers }
-            }).unwrap();
-          } catch (err: any) {
-            console.error('Failed to auto-save', err);
-            // If request is not found (e.g. deleted or invalid ID), reset requestId
-            if (err?.status === 404) {
-              setRequestId(null);
-              if (typeId) {
-                // Keep answers but remove ID from draft
-                localStorage.setItem(`draft_${typeId}`, JSON.stringify({
-                  answers: newAnswers,
-                  requestId: null,
-                  lastSaved: new Date().toISOString(),
-                }));
+      // Only attempt server auto-save if authenticated
+      if (isAuthenticated) {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(async () => {
+          if (!requestId) {
+            try {
+              const result = await createRequest({ 
+                affidavit_type: Number(typeId),
+                answers_json: newAnswers 
+              }).unwrap();
+              
+              setRequestId(result.id);
+              localStorage.setItem(`draft_${typeId}`, JSON.stringify({
+                answers: newAnswers,
+                requestId: result.id,
+                lastSaved: new Date().toISOString(),
+              }));
+            } catch (err) {
+              console.error('Failed to auto-create draft', err);
+            }
+          } else {
+            try {
+              await autoSaveRequest({
+                id: requestId,
+                data: { answers_json: newAnswers }
+              }).unwrap();
+            } catch (err: any) {
+              console.error('Failed to auto-save', err);
+              // If request is not found (e.g. deleted or invalid ID), reset requestId
+              if (err?.status === 404) {
+                setRequestId(null);
+                if (typeId) {
+                  // Keep answers but remove ID from draft
+                  localStorage.setItem(`draft_${typeId}`, JSON.stringify({
+                    answers: newAnswers,
+                    requestId: null,
+                    lastSaved: new Date().toISOString(),
+                  }));
+                }
               }
             }
           }
-        }
-      }, 2000);
+        }, 2000);
+      }
     }
   };
 
@@ -360,7 +338,47 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     if (currentStep > 0) setCurrentStep(prev => prev - 1);
   };
 
-  const handleSubmit = async () => {
+  const submitAuthenticatedRequest = async () => {
+    if (!typeId) return;
+    setIsSubmitting(true);
+    try {
+        let idToSubmit = requestId;
+
+        if (!idToSubmit) {
+          const result = await createRequest({ 
+            affidavit_type: Number(typeId),
+            answers_json: answers 
+          }).unwrap();
+          idToSubmit = result.id;
+        } else {
+          await autoSaveRequest({
+            id: idToSubmit,
+            data: { answers_json: answers }
+          }).unwrap();
+        }
+        
+        await submitRequest(idToSubmit).unwrap();
+        
+        localStorage.removeItem(`draft_${typeId}`);
+        
+        navigate(ROUTES.REQUEST_STATUS.replace(':id', String(idToSubmit)));
+    } catch (error: any) {
+         console.error('Submission failed', error);
+         toast.error('Submission failed. Please try again.');
+         setIsSubmitting(false);
+    }
+  };
+
+  const handleScheduleFromPreview = () => {
+    setShowDraftPreviewModal(false);
+    if (isAuthenticated) {
+        submitAuthenticatedRequest();
+    } else {
+        setShowPaymentModal(true);
+    }
+  };
+
+  const processSubmission = async () => {
     if (!typeId) return;
     setIsSubmitting(true);
     setValidationErrors([]);
@@ -407,28 +425,25 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         return; // Block submission
       }
 
-      // Step 2: Create or update the request
-      let idToSubmit = requestId;
-
-      if (!idToSubmit) {
-        const result = await createRequest({ 
-          affidavit_type: Number(typeId),
-          answers_json: answers 
-        }).unwrap();
-        idToSubmit = result.id;
-      } else {
-        await autoSaveRequest({
-          id: idToSubmit,
-          data: { answers_json: answers }
-        }).unwrap();
+      // If validation passed and we have a draft, show preview
+      if (validationResult.draft_text) {
+        setGeneratedDraftText(validationResult.draft_text);
+        // Don't auto-open modal, show the success state instead
+        setShowDraftPreviewModal(false);
+        setIsSubmitting(false);
+        toast.success("Draft generated successfully!");
+        return;
       }
-      
-      // Step 3: Submit the request for AI processing
-      await submitRequest(idToSubmit).unwrap();
-      
-      localStorage.removeItem(`draft_${typeId}`);
-      
-      navigate(ROUTES.REQUEST_STATUS.replace(':id', String(idToSubmit)));
+
+      // Fallback if no draft text (should not happen normally)
+      if (!isAuthenticated) {
+        setShowPaymentModal(true);
+        setIsSubmitting(false);
+        return;
+      }
+
+      await submitAuthenticatedRequest();
+
     } catch (error: unknown) {
       const errorData = (error as { data?: Record<string, unknown> })?.data;
       if (errorData) {
@@ -478,25 +493,72 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     }
   };
 
+  const handleSubmit = async () => {
+    // Check for declaration dates
+    let declarationDate: Date | null = null;
+    
+    // Try to find individual fields
+    const yearKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_year'));
+    const monthKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_month'));
+    const dayKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_day'));
+    
+    // Try to find combined field
+    const dateKey = Object.keys(answers).find(k => k === 'declaration_date');
+
+    if (yearKey && monthKey && dayKey && answers[yearKey] && answers[monthKey] && answers[dayKey]) {
+      const year = parseInt(answers[yearKey] as string);
+      const day = parseInt(answers[dayKey] as string);
+      let month = 0;
+      const monthVal = answers[monthKey] as string;
+      
+      const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+      const monthIndex = monthNames.findIndex(m => m === monthVal.toLowerCase());
+      
+      if (monthIndex >= 0) {
+        month = monthIndex;
+      } else if (!isNaN(parseInt(monthVal))) {
+        month = parseInt(monthVal) - 1;
+      }
+      
+      // Construct date - use middle of day to avoid timezone edge cases
+      declarationDate = new Date(year, month, day, 12, 0, 0);
+    } else if (dateKey && answers[dateKey]) {
+       const dateStr = answers[dateKey] as string;
+       // Parse YYYY-MM-DD manually to avoid UTC conversion issues
+       const [y, m, d] = dateStr.split('-').map(Number);
+       if (y && m && d) {
+         declarationDate = new Date(y, m - 1, d, 12, 0, 0);
+       }
+    }
+
+    if (declarationDate) {
+      const today = new Date();
+      // Compare dates only (YYYY-MM-DD)
+      const isSameDate = declarationDate.getDate() === today.getDate() && 
+                         declarationDate.getMonth() === today.getMonth() && 
+                         declarationDate.getFullYear() === today.getFullYear();
+
+      if (!isSameDate) {
+         setConfirmationMessage({
+           entered: declarationDate.toLocaleDateString(),
+           today: today.toLocaleDateString()
+         });
+         setShowDateConfirmation(true);
+         return;
+      }
+    }
+
+    await processSubmission();
+  };
+
   const renderField = (field: IntakeQuestion, fieldIndex: number) => {
     // Use id if available, otherwise fallback to field_name or generate from index
     const fieldKey = field.id || field.field_name || `question_${fieldIndex}`;
     const value = answers[fieldKey];
     const validation = field.validation;
     
-    // Check if this is a declaration date field (should be readonly and prefilled)
-    const fieldKeyLower = fieldKey.toLowerCase();
-    const isDeclarationDateField = 
-      fieldKeyLower.includes('declaration_year') ||
-      fieldKeyLower.includes('declaration_month') ||
-      fieldKeyLower.includes('declaration_day') ||
-      fieldKeyLower === 'declaration_date';
-
     // Helper to filter input based on input_mode
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      // Don't allow changes to declaration date fields
-      if (isDeclarationDateField) return;
-      
       let newValue = e.target.value;
       
       // Apply input_mode restrictions in real-time
@@ -538,19 +600,16 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
     // Common input props with validation
     const getInputProps = () => ({
       id: fieldKey,
-      placeholder: isDeclarationDateField ? undefined : field.placeholder,
+      placeholder: field.placeholder,
       value: (value as string) || '',
       onChange: handleInputChange,
       minLength: validation?.min_length,
       maxLength: validation?.max_length,
       pattern: validation?.pattern,
-      title: isDeclarationDateField ? 'This field is automatically set to today\'s date' : validation?.message,
+      title: validation?.message,
       inputMode: validation?.input_mode === 'numeric' ? 'numeric' as const : 
                  validation?.input_mode === 'tel' ? 'tel' as const : 
                  validation?.input_mode === 'email' ? 'email' as const : undefined,
-      readOnly: isDeclarationDateField,
-      disabled: isDeclarationDateField,
-      className: isDeclarationDateField ? 'bg-muted cursor-not-allowed' : undefined,
     });
 
     switch (field.type) {
@@ -567,21 +626,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         // If max_year_current is set, limit to current year
         const maxValue = validation?.max_year_current ? currentYear : validation?.max;
         
-        // Declaration date fields should be readonly with prefilled values
-        if (isDeclarationDateField) {
-          return (
-            <Input 
-              id={fieldKey} 
-              type="number" 
-              value={(value as string) || ''} 
-              readOnly
-              disabled
-              className="bg-muted cursor-not-allowed"
-              title="This field is automatically set to today's date"
-            />
-          );
-        }
-        
         return (
           <Input 
             id={fieldKey} 
@@ -589,13 +633,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
             placeholder={field.placeholder} 
             value={(value as string) || ''} 
             onChange={(e) => {
-              const numValue = parseInt(e.target.value);
-              // Prevent future years for declaration year fields
-              if (validation?.check_future_date && validation?.max_year_current && numValue > currentYear) {
-                toast.error(`Year cannot be in the future (maximum: ${currentYear})`);
-                handleFieldChange(fieldKey, String(currentYear));
-                return;
-              }
               handleFieldChange(fieldKey, e.target.value);
             }}
             min={validation?.min}
@@ -604,20 +641,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         );
       }
       case 'date':
-        // Declaration date fields should be readonly with prefilled values
-        if (isDeclarationDateField) {
-          return (
-            <Input 
-              id={fieldKey} 
-              type="date" 
-              value={(value as string) || ''} 
-              readOnly
-              disabled
-              className="bg-muted cursor-not-allowed"
-              title="This field is automatically set to today's date"
-            />
-          );
-        }
         return (
           <Input 
             id={fieldKey} 
@@ -629,21 +652,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
           />
         );
       case 'select': {
-        // Declaration date fields should be readonly with prefilled values
-        if (isDeclarationDateField) {
-          return (
-            <Input 
-              id={fieldKey} 
-              type="text" 
-              value={(value as string) || ''} 
-              readOnly
-              disabled
-              className="bg-muted cursor-not-allowed"
-              title="This field is automatically set to today's date"
-            />
-          );
-        }
-        
         // Filter out future months if this is a month field and year is current year
         let selectOptions = field.options || [];
         
@@ -723,128 +731,214 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
 
   return (
     <div className="container py-8 max-w-3xl">
-      {/* Header */}
-      <div className="mb-8">
-        <Button variant="ghost" className="mb-4" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div className="flex items-center gap-3 mb-2">
-          <TierBadge tier={type.tier} size="sm" />
-          {isCreating && <span className="text-sm text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Creating draft...</span>}
-        </div>
-        <h1 className="text-2xl font-bold">{type.name}</h1>
-        <p className="text-muted-foreground mt-1">Fill out the form below to create your affidavit</p>
-      </div>
-
-      {/* Progress */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-muted-foreground">Step {currentStep + 1} of {totalSteps}</span>
-          <div className="flex items-center gap-2">
-            {lastSaved ? (
-              <span className="text-green-600 flex items-center gap-1">
-                <CheckCircle className="h-3 w-3" />
-                Saved locally
-              </span>
-            ) : null}
+      {generatedDraftText ? (
+        <Card className="border-green-500/20 bg-green-50/50 dark:bg-green-950/10 mt-12">
+          <CardHeader className="text-center pb-2">
+             <div className="mx-auto bg-green-100 dark:bg-green-900/30 p-3 rounded-full w-fit mb-4">
+               <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+             </div>
+             <CardTitle className="text-2xl">Affidavit Draft Ready!</CardTitle>
+             <CardDescription className="text-base max-w-md mx-auto mt-2">
+               Your {type.name} has been successfully drafted based on your inputs.
+             </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 py-6">
+             <div className="grid sm:grid-cols-2 gap-4">
+               <Button 
+                 size="lg" 
+                 variant="outline" 
+                 className="h-auto py-6 flex flex-col items-center gap-3 border-2 hover:border-primary/50 hover:bg-accent"
+                 onClick={() => setShowDraftPreviewModal(true)}
+               >
+                 <Eye className="h-8 w-8 text-primary mb-1" />
+                 <div className="text-center">
+                   <span className="block font-semibold text-lg">View Draft</span>
+                   <span className="block text-xs text-muted-foreground font-normal">Review the document</span>
+                 </div>
+               </Button>
+               
+               <Button 
+                 size="lg" 
+                 className="h-auto py-6 flex flex-col items-center gap-3 shadow-lg hover:shadow-xl transition-all"
+                 onClick={handleScheduleFromPreview}
+               >
+                 <ArrowRight className="h-8 w-8 mb-1" />
+                 <div className="text-center">
+                   <span className="block font-semibold text-lg">Schedule Now</span>
+                   <span className="block text-xs text-primary-foreground/80 font-normal">Proceed to notarization</span>
+                 </div>
+               </Button>
+             </div>
+             
+             <div className="text-center mt-6">
+               <Button variant="ghost" size="sm" onClick={() => setGeneratedDraftText('')}>
+                 <ArrowLeft className="h-4 w-4 mr-2" />
+                 Back to Edit Answers
+               </Button>
+             </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Header */}
+          <div className="mb-8">
+            <Button variant="ghost" className="mb-4" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="flex items-center gap-3 mb-2">
+              <TierBadge tier={type.tier} size="sm" />
+              {isCreating && <span className="text-sm text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Creating draft...</span>}
+            </div>
+            <h1 className="text-2xl font-bold">{type.name}</h1>
+            <p className="text-muted-foreground mt-1">Fill out the form below to create your affidavit</p>
           </div>
-        </div>
-        <Progress value={progress} className="h-2" />
-      </div>
 
-      {/* Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Please provide the following information</CardTitle>
-          <CardDescription>
-            All required fields are marked with *
-          </CardDescription>
-        </CardHeader>
-        
-        {/* Validation Errors Banner */}
-        {validationErrors.length > 0 && (
-          <div className="mx-6 mb-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-md">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-red-600 dark:text-red-400">Please fix the following errors:</h4>
-                <ul className="list-disc list-inside mt-1 text-sm text-red-600 dark:text-red-400">
-                  {validationErrors.map((error, idx) => (
-                    <li key={idx}>{error}</li>
-                  ))}
-                </ul>
+          {/* Progress */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-muted-foreground">Step {currentStep + 1} of {totalSteps}</span>
+              <div className="flex items-center gap-2">
+                {lastSaved ? (
+                  <span className="text-green-600 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Saved locally
+                  </span>
+                ) : null}
               </div>
             </div>
+            <Progress value={progress} className="h-2" />
           </div>
-        )}
-        
-        <CardContent className="space-y-6">
-          {currentQuestions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No questions to display on this step.
-            </div>
-          ) : (
-            currentQuestions.map((field, idx) => {
-              const fieldKey = field.id || field.field_name || `question_${idx}`;
-              const hasError = fieldErrors.has(field.label);
-              return (
-                <div key={fieldKey} className={`space-y-2 ${hasError ? 'p-3 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-md' : ''}`}>
-                  {field.type !== 'checkbox' || (field.options && field.options.length > 0) ? (
-                    <Label htmlFor={fieldKey} className={hasError ? 'text-red-600 dark:text-red-400' : ''}>
-                      {field.label}
-                      {field.required && <span className="text-destructive ml-1">*</span>}
-                    </Label>
-                  ) : null}
-                  {hasError && (
-                    <p className="text-xs text-red-600 dark:text-red-400 font-medium">This field is required</p>
-                  )}
-                  {field.help_text && (
-                    <p className="text-xs text-muted-foreground">{field.help_text}</p>
-                  )}
-                  {renderField(field, allQuestions.indexOf(field))}
+
+          {/* Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Please provide the following information</CardTitle>
+              <CardDescription>
+                All required fields are marked with *
+              </CardDescription>
+            </CardHeader>
+            
+            {/* Validation Errors Banner */}
+            {validationErrors.length > 0 && (
+              <div className="mx-6 mb-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-md">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-red-600 dark:text-red-400">Please fix the following errors:</h4>
+                    <ul className="list-disc list-inside mt-1 text-sm text-red-600 dark:text-red-400">
+                      {validationErrors.map((error, idx) => (
+                        <li key={idx}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              );
-            })
-          )}
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-            disabled={currentStep === 0}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Previous
-          </Button>
+              </div>
+            )}
+            
+            <CardContent className="space-y-6">
+              {currentQuestions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No questions to display on this step.
+                </div>
+              ) : (
+                currentQuestions.map((field, idx) => {
+                  const fieldKey = field.id || field.field_name || `question_${idx}`;
+                  const hasError = fieldErrors.has(field.label);
+                  return (
+                    <div key={fieldKey} className={`space-y-2 ${hasError ? 'p-3 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-md' : ''}`}>
+                      {field.type !== 'checkbox' || (field.options && field.options.length > 0) ? (
+                        <Label htmlFor={fieldKey} className={hasError ? 'text-red-600 dark:text-red-400' : ''}>
+                          {field.label}
+                          {field.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                      ) : null}
+                      {hasError && (
+                        <p className="text-xs text-red-600 dark:text-red-400 font-medium">This field is required</p>
+                      )}
+                      {field.help_text && (
+                        <p className="text-xs text-muted-foreground">{field.help_text}</p>
+                      )}
+                      {renderField(field, allQuestions.indexOf(field))}
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={handleBack}
+                disabled={currentStep === 0}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Previous
+              </Button>
 
-          {currentStep < totalSteps - 1 ? (
-            <Button onClick={handleNext}>
-              Next
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting || isCreating || isValidating}>
-              {(isSubmitting || isCreating || isValidating) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {isValidating ? 'Validating...' : 'Submit Request'}
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          )}
-        </CardFooter>
-      </Card>
+              {currentStep < totalSteps - 1 ? (
+                <Button onClick={handleNext}>
+                  Next
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              ) : (
+                <Button onClick={handleSubmit} disabled={isSubmitting || isCreating || isValidating}>
+                  {(isSubmitting || isCreating || isValidating) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  {isValidating ? 'Validating...' : 'Submit Request'}
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              )}
+            </CardFooter>
+          </Card>
 
-      {/* Info */}
-      <Alert className="mt-6">
-        <Save className="h-4 w-4" />
-        <AlertDescription>
-          Your draft is saved locally in your browser. Click "Submit Request" when you're ready to create your affidavit.
-          {lastSaved && (
-            <span className="block text-xs mt-1 text-muted-foreground">
-              Last saved: {lastSaved.toLocaleTimeString()}
-            </span>
-          )}
-        </AlertDescription>
-      </Alert>
+          {/* Info */}
+          <Alert className="mt-6">
+            <Save className="h-4 w-4" />
+            <AlertDescription>
+              Your draft is saved locally in your browser. Click "Submit Request" when you're ready to create your affidavit.
+              {lastSaved && (
+                <span className="block text-xs mt-1 text-muted-foreground">
+                  Last saved: {lastSaved.toLocaleTimeString()}
+                </span>
+              )}
+            </AlertDescription>
+          </Alert>
+        </>
+      )}
+
+      <AlertDialog open={showDateConfirmation} onOpenChange={setShowDateConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Verify Declaration Date</AlertDialogTitle>
+            <AlertDialogDescription>
+              The declaration date you entered ({confirmationMessage.entered}) is not today's date ({confirmationMessage.today}).
+              <br /><br />
+              Are you sure you want to proceed with this date?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Correct</AlertDialogCancel>
+            <AlertDialogAction onClick={() => processSubmission()}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <DraftPreviewModal
+        isOpen={showDraftPreviewModal}
+        onClose={() => setShowDraftPreviewModal(false)}
+        draftHtml={generatedDraftText}
+        onSchedule={handleScheduleFromPreview}
+        answers={answers}
+      />
+      <PaymentIdentityModal 
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        affidavitTypeId={Number(typeId)}
+        answers={answers}
+        draftText={generatedDraftText}
+        onSuccess={() => {
+          localStorage.removeItem(`draft_${typeId}`);
+        }}
+      />
     </div>
   );
 }

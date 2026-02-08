@@ -7,10 +7,11 @@ import { Spinner } from '@/components/ui/spinner';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRoles?: UserRole | UserRole[];
+  requireSuperuser?: boolean;
 }
 
-export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, hasRole } = useAuth();
+export function ProtectedRoute({ children, requiredRoles, requireSuperuser }: ProtectedRouteProps) {
+  const { isAuthenticated, isLoading, hasRole, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -32,6 +33,10 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   if (requiredRoles && !hasRole(requiredRoles)) {
     // Redirect to home if user doesn't have required role
     return <Navigate to={ROUTES.HOME} replace />;
+  }
+
+  if (requireSuperuser && !user?.is_superuser) {
+    return <Navigate to={ROUTES.ADMIN_TYPES} replace />;
   }
 
   return <>{children}</>;

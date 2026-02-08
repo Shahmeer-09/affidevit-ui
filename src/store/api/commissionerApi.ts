@@ -1,6 +1,6 @@
 // Commissioner API - RTK Query endpoints for commissioner operations
 import { baseApi } from './baseApi';
-import type { Request, Stamp, FrictionReport, PDFPreferences } from '@/types';
+import type { Request, RequestStatus, Stamp, FrictionReport, PDFPreferences } from '@/types';
 
 // Request types
 export interface CompleteRequestParams {
@@ -23,6 +23,19 @@ export interface PDFPreferencesRequest {
   footer_text?: string;
 }
 
+export interface CommissionerScheduleSlot {
+  id: number;
+  commissioner: number;
+  start_time: string;
+  is_booked: boolean;
+  request_details?: {
+    request_code: string;
+    client_name: string;
+    affidavit_type: string;
+    status: RequestStatus;
+  };
+}
+
 export const commissionerApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // Get requests assigned to this commissioner (where user selected them)
@@ -32,6 +45,15 @@ export const commissionerApi = baseApi.injectEndpoints({
     >({
       query: () => '/commissioner/my-requests/',
       providesTags: ['AssignedRequests'],
+    }),
+
+    // Get commissioner's booked schedule
+    getCommissionerSchedule: builder.query<CommissionerScheduleSlot[], void>({
+      query: () => '/commissioner/schedule/',
+      providesTags: ['CommissionerSlot'],
+      transformResponse: (response: any) => {
+        return response?.results || response || [];
+      },
     }),
 
     // Find request by code
@@ -103,6 +125,7 @@ export const commissionerApi = baseApi.injectEndpoints({
 
 export const {
   useGetAssignedRequestsQuery,
+  useGetCommissionerScheduleQuery,
   useLookupRequestQuery,
   useLazyLookupRequestQuery,
   useTakeoverRequestMutation,

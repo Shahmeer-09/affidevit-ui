@@ -97,6 +97,13 @@ export interface PublicCommissioner {
   address?: string | null;
 }
 
+export interface CommissionerSlot {
+  id: number;
+  commissioner: number;
+  start_time: string;
+  is_booked: boolean;
+}
+
 export const userApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // ============================================
@@ -275,6 +282,7 @@ export const userApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Request', id },
         'MyRequests',
+        'CommissionerSlot',
       ],
     }),
 
@@ -324,6 +332,7 @@ export const userApi = baseApi.injectEndpoints({
           issue: string | null;
           example: string | null;
         }>;
+        draft_text?: string;
       },
       { affidavit_type_id: number; answers_json: Record<string, unknown> }
     >({
@@ -332,6 +341,33 @@ export const userApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+    }),
+
+    // Get commissioner slots
+    getCommissionerSlots: builder.query<CommissionerSlot[], { commissionerId: number; date: string }>({
+      query: ({ commissionerId, date }) => `/commissioners/${commissionerId}/slots/?date=${date}`,
+      providesTags: (_result, _error, { commissionerId, date }) => [
+        'CommissionerSlot',
+        { type: 'CommissionerSlot', id: `LIST-${commissionerId}-${date}` },
+      ],
+    }),
+
+    // Book slot
+    bookSlot: builder.mutation<
+      { success: boolean; message: string; slot: CommissionerSlot },
+      { slotId: number; requestId: number }
+    >({
+      query: ({ slotId, requestId }) => ({
+        url: `/slots/${slotId}/book/`,
+        method: 'POST',
+        body: { request_id: requestId },
+      }),
+      invalidatesTags: (_result, _error, { requestId }) => [
+        'CommissionerSlot',
+        'MyRequests',
+        { type: 'Request', id: requestId },
+        { type: 'Request', id: 'LIST' },
+      ],
     }),
   }),
 });
@@ -362,4 +398,7 @@ export const {
   useDeleteRequestMutation,
   useMarkRequestPaidMutation,
   useValidateRequestInputMutation,
+  useGetCommissionerSlotsQuery,
+  useLazyGetCommissionerSlotsQuery,
+  useBookSlotMutation,
 } = userApi;

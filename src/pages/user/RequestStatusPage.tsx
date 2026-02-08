@@ -12,7 +12,7 @@ import {
   useGetRequestStatusQuery,
   useSubmitClarificationMutation,
   useMarkRequestPaidMutation,
-  useSelectCommissionerMutation,
+  // useSelectCommissionerMutation,
 } from '@/store/api/userApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import {
@@ -29,8 +29,27 @@ import {
   Copy,
   Check,
   User,
+  Lock,
+  Calendar,
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+// Helper: format datetime in Trinidad & Tobago timezone
+const formatTTDateTime = (dateInput: string | number | Date) => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Port_of_Spain',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(dateInput));
+  } catch (e) {
+    return format(new Date(dateInput), 'MMM d, yyyy h:mm a');
+  }
+};
 
 export function RequestStatusPage() {
   const { id } = useParams();
@@ -83,7 +102,7 @@ export function RequestStatusPage() {
   // Mutations
   const [submitClarification, { isLoading: isSubmittingClarification }] = useSubmitClarificationMutation();
   const [markPaid, { isLoading: isMarkingPaid }] = useMarkRequestPaidMutation();
-  const [selectCommissioner, { isLoading: isWithdrawing }] = useSelectCommissionerMutation();
+  // const [selectCommissioner, { isLoading: isWithdrawing }] = useSelectCommissionerMutation();
 
   // Refetch when status changes from processing
   useEffect(() => {
@@ -93,6 +112,7 @@ export function RequestStatusPage() {
     }
   }, [statusData?.status, refetch]);
 
+  /*
   // Handle commissioner withdrawal
   const handleWithdrawCommissioner = useCallback(async () => {
     if (!id) {
@@ -129,6 +149,7 @@ export function RequestStatusPage() {
       });
     }
   }, [id, selectCommissioner, refetch]);
+  */
 
   // Handle clarification submit
   const handleSubmitClarification = useCallback(async () => {
@@ -265,7 +286,14 @@ export function RequestStatusPage() {
       items.push({ label: 'AI Draft Generated', status: 'completed' });
     }
 
+    if (normalizedStatus === 'DRAFT_READY') {
+      items.push({ label: 'Payment & Scheduling', status: 'current' });
+      items.push({ label: 'Under Review', status: 'upcoming' });
+      items.push({ label: 'Approved', status: 'upcoming' });
+    }
+
     if (normalizedStatus === 'NEEDS_REVIEW') {
+      items.push({ label: 'Payment & Scheduling', status: 'completed' });
       items.push({ label: 'Under Review', description: 'A reviewer is checking your document', status: 'current' });
       items.push({ label: 'Approved', status: 'upcoming' });
       items.push({ label: 'Ready for Notarization', status: 'upcoming' });
@@ -286,9 +314,36 @@ export function RequestStatusPage() {
     return items;
   };
 
-  const canDownload = ['APPROVED', 'COMPLETED', 'DRAFT_READY', 'NEEDS_REVIEW'].includes(normalizedStatus || '');
+  const canDownload = ['APPROVED', 'COMPLETED'].includes(normalizedStatus || '');
   const isProcessing = normalizedStatus === 'PROCESSING' || normalizedStatus === 'SUBMITTED';
+  const isDraftReady = normalizedStatus === 'DRAFT_READY';
   const needsClarification = normalizedStatus === 'NEEDS_CLARIFICATION';
+  const needsReview = normalizedStatus === 'NEEDS_REVIEW';
+
+  const handleScheduleAction = async () => {
+    if (!id) return;
+    
+    // If not paid, pay first
+    if (!request?.is_paid) {
+        try {
+            await markPaid(Number(id)).unwrap();
+            toast.success('Payment Successful', {
+                description: 'You can now schedule your appointment.',
+            });
+            // Refetch to update status/payment
+            await refetch();
+            // Then navigate
+            navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', id));
+        } catch {
+            toast.error('Payment Failed', {
+                description: 'Please try again.',
+            });
+        }
+    } else {
+        // Already paid, just navigate
+        navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', id));
+    }
+  };
 
   return (
     <div className="container py-8">
@@ -356,6 +411,53 @@ export function RequestStatusPage() {
                 <p className="text-sm text-muted-foreground text-center">
                   Please wait while we prepare your document...
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Needs Review - Appointment Booked Banner */}
+          {needsReview && request.appointment_date && (
+            <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+              <CardContent className="py-8 text-center">
+                <Calendar className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2 text-blue-800 dark:text-blue-200">Review In Progress</h2>
+                <p className="text-muted-foreground mb-4 max-w-lg mx-auto">
+                  Your affidavit is ready for your appointment on <strong>{formatTTDateTime(request.appointment_date)}</strong>.
+                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/40 p-3 rounded-md inline-block">
+                  Please wait for a Reviewer to verify the legal details before your session.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Draft Ready - Schedule Banner */}
+          {isDraftReady && (
+            <Card className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
+              <CardContent className="py-8 text-center">
+                <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2 text-green-800 dark:text-green-200">Affidavit Draft Ready!</h2>
+                <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
+                  Your affidavit has been generated successfully. Please proceed to payment and schedule your notarization appointment.
+                </p>
+                <Button 
+                  size="lg" 
+                  onClick={handleScheduleAction}
+                  disabled={isMarkingPaid}
+                  className="w-full sm:w-auto"
+                >
+                  {isMarkingPaid ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Processing Payment...
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="h-5 w-5 mr-2" />
+                      {!request.is_paid ? 'Pay & Schedule Notarization' : 'Schedule Notarization'}
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -430,74 +532,86 @@ export function RequestStatusPage() {
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Commissioner Selection - only for APPROVED status */}
+              {/* Commissioner Selection */}
+              {/* Show for APPROVED (Locked) */}
               {normalizedStatus === 'APPROVED' && (
                 <div className="space-y-2">
                   <Label>Commissioner</Label>
-                  {request.commissioner ? (
-                    <div className="space-y-3">
-                      <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                  {/* ... Locked UI ... */}
+                  <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
+                      <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
+                      <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
+                      <p className="text-xs text-muted-foreground">
+                        Commissioner selection cannot be changed after approval.
+                      </p>
+                  </div>
+                  {request.commissioner && (
+                    <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                         <div className="flex items-center gap-3">
-                          {request.commissioner.profile_image_url ? (
-                            <img 
-                              src={request.commissioner.profile_image_url}
-                              alt={`${request.commissioner.first_name} ${request.commissioner.last_name}`}
-                              className="h-10 w-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          {/* Commissioner Image */}
+                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                               <User className="h-5 w-5 text-primary" />
                             </div>
-                          )}
                           <div>
                             <p className="font-medium text-green-700 dark:text-green-300">
                               {request.commissioner.first_name} {request.commissioner.last_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              Commissioner assigned
+                              Assigned Commissioner
+                            </p>
+                          </div>
+                        </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Show for DRAFT_READY or NEEDS_REVIEW (Active Selection) */}
+              {(isDraftReady || needsReview) && (
+                 <div className="space-y-2">
+                  <Label>Commissioner Appointment</Label>
+                  {request.commissioner ? (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-blue-700 dark:text-blue-300">
+                              {request.commissioner.first_name} {request.commissioner.last_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {needsReview ? 'Pending Review' : 'Selected'}
                             </p>
                           </div>
                         </div>
                       </div>
+                      
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleWithdrawCommissioner}
-                        disabled={isWithdrawing}
+                        onClick={() => navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id)))}
                         className="w-full"
                       >
-                        {isWithdrawing ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Withdrawing...
-                          </>
-                        ) : (
-                          'Withdraw Selection'
-                        )}
+                        {needsReview ? 'Change Appointment' : 'Select Commissioner'}
                       </Button>
                     </div>
                   ) : (
                     <Button 
                       variant="outline" 
                       className="w-full justify-start"
-                      asChild
+                      onClick={handleScheduleAction}
                     >
-                      <Link to={ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id))}>
-                        <User className="h-4 w-4 mr-2" />
-                        Select a Commissioner
-                      </Link>
+                      <User className="h-4 w-4 mr-2" />
+                      {request.is_paid ? 'Select Commissioner' : 'Pay & Select Commissioner'}
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    {request.commissioner 
-                      ? 'Take your document to this commissioner to finalize.'
-                      : 'Select a commissioner to visit in person.'}
-                  </p>
                 </div>
               )}
 
-              {/* Payment Section - show for NEEDS_REVIEW or APPROVED when not paid */}
-              {canDownload && !request.is_paid && (
+              {/* Payment Section - show only for DRAFT_READY when not paid */}
+              {isDraftReady && !request.is_paid && (
                 <div className="space-y-2">
                   <Separator />
                   <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20">
@@ -506,7 +620,7 @@ export function RequestStatusPage() {
                       <p className="font-semibold text-primary">Payment Required</p>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Complete payment to download your affidavit document.
+                      Complete payment to proceed with your request.
                     </p>
                     <div className="p-3 bg-white dark:bg-gray-900 rounded border mb-3">
                       <div className="flex justify-between items-center">
@@ -548,11 +662,6 @@ export function RequestStatusPage() {
                     <Download className="h-4 w-4 mr-2" />
                     Download PDF
                   </Button>
-                  {normalizedStatus === 'NEEDS_REVIEW' && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Draft available for preview. Final version pending review.
-                    </p>
-                  )}
                 </>
               )}
 
@@ -585,12 +694,12 @@ export function RequestStatusPage() {
               )}
               
               {/* View Draft for approved status */}
-              {request.status === 'approved' && (
+              {/* {request.status === 'approved' && (
                 <Button variant="outline" className="w-full">
                   <FileText className="h-4 w-4 mr-2" />
                   View Draft
                 </Button>
-              )}
+              )} */}
 
               {/* Continue Editing for draft status */}
               {request.status === 'draft' && (

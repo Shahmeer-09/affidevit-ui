@@ -27,6 +27,12 @@ export interface QAOverrideParams {
   ai_correct?: boolean; // true = AI was right, false = AI was wrong (false positive)
 }
 
+export interface FeedbackParams {
+  request_id: number;
+  category: string;
+  message: string;
+}
+
 export const reviewerApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // Get review queue - returns array (backend uses ListAPIView with pagination)
@@ -95,6 +101,21 @@ export const reviewerApi = baseApi.injectEndpoints({
         { type: 'ReviewRequest', id: request_id },
       ],
     }),
+
+    // Submit minimal feedback for a request
+    submitFeedback: builder.mutation<
+      { id: number; request: number; reviewer: number; category: string; message: string; created_at: string },
+      FeedbackParams
+    >({
+      query: ({ request_id, category, message }) => ({
+        url: `/reviewer/${request_id}/feedback/`,
+        method: 'POST',
+        body: { category, message },
+      }),
+      invalidatesTags: (_result, _error, { request_id }) => [
+        { type: 'ReviewRequest', id: request_id },
+      ],
+    }),
   }),
 });
 
@@ -106,4 +127,5 @@ export const {
   useApproveRequestMutation,
   useRejectRequestMutation,
   useRequestClarificationMutation,
+  useSubmitFeedbackMutation,
 } = reviewerApi;

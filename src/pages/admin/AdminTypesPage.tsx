@@ -32,6 +32,7 @@ import {
   useDeleteAffidavitTypeMutation,
   useDuplicateAffidavitTypeMutation,
 } from '@/store/api/adminApi';
+import { useAuth } from '@/hooks/use-auth';
 import {
   Search,
   Plus,
@@ -50,6 +51,8 @@ import { toast } from 'sonner';
 
 export function AdminTypesPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSuperuser = !!user?.is_superuser;
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTypeId, setDeleteTypeId] = useState<number | null>(null);
 
@@ -149,10 +152,12 @@ export function AdminTypesPage() {
         title="Affidavit Types"
         description="Manage affidavit types, intake questions, and AI configuration"
       >
-        <Button onClick={() => navigate('/admin/affidavit-types/new')}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Type
-        </Button>
+        {isSuperuser && (
+          <Button onClick={() => navigate('/admin/affidavit-types/new')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Type
+          </Button>
+        )}
       </DashboardHeader>
 
       {/* Stats */}
@@ -234,10 +239,12 @@ export function AdminTypesPage() {
                   : 'Create your first affidavit type to get started'}
               </p>
               {!searchQuery && (
-                <Button onClick={() => navigate('/admin/affidavit-types/new')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Type
-                </Button>
+                isSuperuser ? (
+                  <Button onClick={() => navigate('/admin/affidavit-types/new')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Type
+                  </Button>
+                ) : null
               )}
             </div>
           ) : (
@@ -258,8 +265,10 @@ export function AdminTypesPage() {
                 {filteredTypes.map((type) => (
                   <TableRow
                     key={type.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/admin/affidavit-types/${type.id}`)}
+                    className={isSuperuser ? 'cursor-pointer hover:bg-muted/50' : undefined}
+                    onClick={
+                      isSuperuser ? () => navigate(`/admin/affidavit-types/${type.id}`) : undefined
+                    }
                   >
                     <TableCell className="max-w-[360px]">
                       <div className="min-w-0">
@@ -285,14 +294,14 @@ export function AdminTypesPage() {
                         onCheckedChange={() =>
                           handleToggleHomepage(type.id, type.enabled_on_homepage)
                         }
-                        disabled={isUpdating}
+                        disabled={!isSuperuser || isUpdating}
                       />
                     </TableCell>
                     <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       <Switch
                         checked={type.is_active}
                         onCheckedChange={() => handleToggleActive(type.id, type.is_active)}
-                        disabled={isUpdating}
+                        disabled={!isSuperuser || isUpdating}
                       />
                     </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -304,29 +313,32 @@ export function AdminTypesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => navigate(`/admin/affidavit-types/${type.id}`)}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
                             onClick={() => navigate(`/admin/affidavit-types/${type.id}/requests`)}
                           >
                             <List className="h-4 w-4 mr-2" />
                             View Requests
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDuplicate(type.id)}>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Duplicate
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => setDeleteTypeId(type.id)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {isSuperuser && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => navigate(`/admin/affidavit-types/${type.id}`)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(type.id)}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTypeId(type.id)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

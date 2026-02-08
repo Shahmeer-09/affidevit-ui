@@ -23,6 +23,7 @@ import {
   useGetReviewQueueQuery,
   useApproveRequestMutation,
   useRejectRequestMutation,
+  useSubmitFeedbackMutation,
 } from '@/store/api/reviewerApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -55,6 +56,17 @@ const ISSUE_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
+// Feedback categories for reviewer feedback
+const FEEDBACK_CATEGORIES = [
+  { value: 'grammar', label: 'Grammar/Spelling' },
+  { value: 'legal_error', label: 'Legal Error' },
+  { value: 'missing_info', label: 'Missing Information' },
+  { value: 'contradiction', label: 'Contradiction' },
+  { value: 'formatting', label: 'Formatting Issue' },
+  { value: 'inappropriate', label: 'Inappropriate Content' },
+  { value: 'other', label: 'Other' },
+];
+
 export function ReviewerDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -67,7 +79,12 @@ export function ReviewerDetailPage() {
   const [issueDescription, setIssueDescription] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
+  const [checkedQaItems, setCheckedQaItems] = useState<number[]>([]);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [issuesDialogOpen, setIssuesDialogOpen] = useState(false);
+  // Feedback form state
+  const [feedbackCategory, setFeedbackCategory] = useState('other');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   // Fetch request details
   const {
@@ -84,6 +101,7 @@ export function ReviewerDetailPage() {
   // Mutations
   const [approveRequest, { isLoading: isApproving }] = useApproveRequestMutation();
   const [rejectRequest, { isLoading: isRejecting }] = useRejectRequestMutation();
+  const [submitFeedback, { isLoading: isSubmittingFeedback }] = useSubmitFeedbackMutation();
 
   // Find current position in queue for navigation
   const currentIndex = queue.findIndex((r) => r.id === Number(id));
@@ -113,6 +131,12 @@ export function ReviewerDetailPage() {
   const handleCheckItem = (itemId: string) => {
     setCheckedItems((prev) =>
       prev.includes(itemId) ? prev.filter((i) => i !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const handleCheckQaItem = (index: number) => {
+    setCheckedQaItems((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     );
   };
 
@@ -174,6 +198,41 @@ export function ReviewerDetailPage() {
       toast({
         title: 'Error',
         description: 'Failed to reject the request. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleFeedbackSubmit = async () => {
+    if (!request || !feedbackMessage.trim()) return;
+    if (feedbackMessage.length < 10 || feedbackMessage.length > 300) {
+      toast({
+        title: 'Invalid Feedback',
+        description: 'Feedback must be between 10 and 300 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await submitFeedback({
+        request_id: request.id,
+        category: feedbackCategory,
+        message: feedbackMessage.trim(),
+      }).unwrap();
+
+      toast({
+        title: 'Feedback Submitted',
+        description: 'Your feedback has been recorded. Thank you!',
+      });
+
+      // Reset form
+      setFeedbackCategory('other');
+      setFeedbackMessage('');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to submit feedback. Please try again.',
         variant: 'destructive',
       });
     }
@@ -533,6 +592,75 @@ export function ReviewerDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* AI Detected Issues Button */}
+          {request.qa_flags_json && request.qa_flags_json.length > 0 && (
+            <Dialog open={issuesDialogOpen} onOpenChange={setIssuesDialogOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="w-full border-amber-500 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                >
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  View {request.qa_flags_json.length} AI Detected Issues
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="h-5 w-5" />
+                    AI Detected Issues
+                  </DialogTitle>
+                  <DialogDescription>
+                    Please review and address these potential issues detected by the AI.
+                  </DialogDescription>
+                </DialogHeader>
+                
+                <div className="space-y-4 py-4">
+                  {request.qa_flags_json.map((flag: any, index: number) => (
+                    <div key={index} className="flex items-start space-x-3 bg-white dark:bg-gray-900 p-4 rounded-md border border-amber-200 dark:border-amber-900">
+                      <Checkbox
+                        id={`qa-issue-${index}`}
+                        checked={checkedQaItems.includes(index)}
+                        onCheckedChange={() => handleCheckQaItem(index)}
+                        className="mt-1 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                      />
+                      <div className="space-y-1 flex-1">
+                        <Label
+                          htmlFor={`qa-issue-${index}`}
+                          className={`text-base font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                            checkedQaItems.includes(index) ? 'text-muted-foreground line-through' : ''
+                          }`}
+                        >
+                          {flag.description || flag.issue || 'Unknown Issue'}
+                        </Label>
+                        {flag.location && (
+                          <div className="mt-2 p-2 bg-muted/50 rounded text-sm italic border-l-2 border-amber-300 dark:border-amber-700">
+                            "{flag.location}"
+                          </div>
+                        )}
+                        {flag.suggestion && !checkedQaItems.includes(index) && (
+                          <div className="flex items-start gap-2 mt-2 text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20 p-2 rounded">
+                            <span className="font-semibold">Suggestion:</span> 
+                            {flag.suggestion}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    {checkedQaItems.length} of {request.qa_flags_json.length} issues addressed
+                  </p>
+                  <Button onClick={() => setIssuesDialogOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
           {/* Actions */}
           <Card className="border-primary">
             <CardHeader>
@@ -633,6 +761,61 @@ export function ReviewerDetailPage() {
                   {checkedItems.length} of {reviewChecklist.length} items verified
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Minimal Feedback Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Minimal Feedback</CardTitle>
+              <CardDescription className="text-xs">
+                Help improve AI: 1–2 sentences, 10–300 chars
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs">Category</Label>
+                <Select value={feedbackCategory} onValueChange={setFeedbackCategory}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FEEDBACK_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value} className="text-xs">
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Feedback (10–300 chars)</Label>
+                <Textarea
+                  placeholder="e.g., Missing address line 2. City name misspelled."
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  rows={2}
+                  className="text-xs resize-none"
+                  maxLength={300}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Keep feedback short and specific</span>
+                  <span>{feedbackMessage.length}/300</span>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="w-full h-7 text-xs"
+                disabled={!feedbackMessage.trim() || feedbackMessage.length < 10 || feedbackMessage.length > 300 || isSubmittingFeedback}
+                onClick={handleFeedbackSubmit}
+              >
+                {isSubmittingFeedback ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Edit3 className="h-3 w-3 mr-1" />
+                )}
+                Submit Feedback
+              </Button>
             </CardContent>
           </Card>
         </div>

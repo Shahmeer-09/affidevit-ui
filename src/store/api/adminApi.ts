@@ -9,6 +9,7 @@ import type {
   FrictionReport,
   PaginatedResponse,
 } from '@/types';
+import type { ReviewerFeedbackQueryParams } from './types/admin.types';
 
 // Response types
 export interface ConfidenceDashboard {
@@ -99,8 +100,21 @@ export interface PaymentLog {
   paid_by_name: string | null;
   payment_reference: string;
   payment_method: string;
-  notes: string;
-  paid_at: string;
+  payment_date: string;
+  receipt_url: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ReviewerFeedbackLog {
+  id: number;
+  request: number;
+  request_code: string;
+  reviewer: number;
+  reviewer_name: string;
+  category: string;
+  message: string;
+  created_at: string;
 }
 
 export interface MarkAsPaidRequest {
@@ -828,6 +842,28 @@ export const adminApi = baseApi.injectEndpoints({
     }),
 
     // =========================================================================
+    // Reviewer Feedback
+    // =========================================================================
+
+    getReviewerFeedback: builder.query<
+      PaginatedResponse<ReviewerFeedbackLog>,
+      ReviewerFeedbackQueryParams | void
+    >({
+      query: (params) => {
+        const queryParams: string[] = [];
+        if (params?.page) queryParams.push(`page=${params.page}`);
+        if (params?.search) queryParams.push(`search=${encodeURIComponent(params.search)}`);
+        if (params?.category) queryParams.push(`category=${params.category}`);
+        if (params?.request_code) queryParams.push(`request_code=${encodeURIComponent(params.request_code)}`);
+        if (params?.start_date) queryParams.push(`start_date=${params.start_date}`);
+        if (params?.end_date) queryParams.push(`end_date=${params.end_date}`);
+        const queryString = queryParams.length ? `?${queryParams.join('&')}` : '';
+        return `/admin/reviewer-feedback/${queryString}`;
+      },
+      providesTags: ['Feedback'],
+    }),
+
+    // =========================================================================
     // Decision Tree Management
     // =========================================================================
 
@@ -1007,6 +1043,7 @@ export const {
   useCreateReviewerMutation,
   useUpdateReviewerMutation,
   useDeleteReviewerMutation,
+  useGetReviewerFeedbackQuery,
   // Decision Tree (Admin)
   useGetAdminDecisionTreeNodesQuery,
   useGetAdminDecisionTreeNodeQuery,
@@ -1020,4 +1057,3 @@ export const {
   useGetSiteSettingsQuery,
   useUpdateSiteSettingsMutation,
 } = adminApi;
-

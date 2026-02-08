@@ -36,6 +36,36 @@ export interface VerifyOtpResponse {
   access?: string;
 }
 
+export interface GuestSignupStartRequest {
+  email: string;
+  full_name: string;
+  phone_number?: string;
+}
+
+export interface GuestSignupStartResponse {
+  message: string;
+  mock_otp?: string;
+}
+
+export interface GuestSignupVerifyRequest {
+  email: string;
+  otp: string;
+  full_name: string;
+  phone_number?: string;
+  affidavit_type_id: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  answers_json: any;
+  draft_text?: string;
+}
+
+export interface GuestSignupVerifyResponse {
+  user: User;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  request: any;
+  refresh: string;
+  access: string;
+}
+
 export interface ProfileUpdateRequest {
   first_name?: string;
   last_name?: string;
@@ -86,6 +116,24 @@ export const authApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Guest Signup Start
+    guestSignupStart: builder.mutation<GuestSignupStartResponse, GuestSignupStartRequest>({
+      query: (data) => ({
+        url: '/auth/guest-signup/start/',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    // Guest Signup Verify
+    guestSignupVerify: builder.mutation<GuestSignupVerifyResponse, GuestSignupVerifyRequest>({
+      query: (data) => ({
+        url: '/auth/guest-signup/verify/',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
     // Get current user profile
     getProfile: builder.query<User, void>({
       query: () => '/auth/profile/',
@@ -109,6 +157,8 @@ export const {
   useRegisterMutation,
   useRegisterCommissionerMutation,
   useVerifyOtpMutation,
+  useGuestSignupStartMutation,
+  useGuestSignupVerifyMutation,
   useGetProfileQuery,
   useLazyGetProfileQuery,
   useUpdateProfileMutation,

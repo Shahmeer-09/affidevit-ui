@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -20,9 +21,13 @@ import {
   useGetPublicCommissionersQuery,
   useSelectCommissionerMutation,
   useGetRequestQuery,
+  useBookSlotMutation,
+  useSubmitRequestMutation,
   type PublicCommissioner,
+  type CommissionerSlot,
 } from '@/store/api/userApi';
 import { ROUTES } from '@/lib/constants';
+import { TimeSlotPicker } from '@/components/affidavits/TimeSlotPicker';
 import {
   ArrowLeft,
   User,
@@ -33,6 +38,7 @@ import {
   Loader2,
   Calendar,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 
 export function SelectCommissionerPage() {
@@ -41,6 +47,14 @@ export function SelectCommissionerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [commissionerToSelect, setCommissionerToSelect] = useState<PublicCommissioner | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Slot selection state
+  const [selectedSlot, setSelectedSlot] = useState<CommissionerSlot | null>(null);
+  const [isSlotPickerOpen, setIsSlotPickerOpen] = useState(false);
+  const [bookSlot, { isLoading: isBooking }] = useBookSlotMutation();
+  const [submitRequest, { isLoading: isSubmitting }] = useSubmitRequestMutation();
+  const [showSubmissionConfirm, setShowSubmissionConfirm] = useState(false);
 
   const { data: request, isLoading: isLoadingRequest } = useGetRequestQuery(Number(id), {
     skip: !id,
@@ -48,6 +62,12 @@ export function SelectCommissionerPage() {
   
   const { data: commissioners, isLoading: isLoadingCommissioners } = useGetPublicCommissionersQuery();
   const [selectCommissioner, { isLoading: isSelecting }] = useSelectCommissionerMutation();
+
+  const filteredCommissioners = commissioners?.filter(commissioner => 
+    commissioner.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    commissioner.organization?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    commissioner.commission_number?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Prevent browser back button if commissioner already selected
   useEffect(() => {
@@ -72,9 +92,69 @@ export function SelectCommissionerPage() {
 
   const openConfirmDialog = (commissioner: PublicCommissioner) => {
     setCommissionerToSelect(commissioner);
-    setConfirmDialogOpen(true);
+    // setConfirmDialogOpen(true); // OLD: Direct confirm
+    setIsSlotPickerOpen(true); // NEW: Open slot picker first
   };
 
+  const handleBookAppointment = async () => {
+    if (!id || !commissionerToSelect || !selectedSlot) return;
+
+    try {
+      await bookSlot({ slotId: selectedSlot.id, requestId: Number(id) }).unwrap();
+      
+      toast.success('Appointment Confirmed', {
+        description: `Booked with ${commissionerToSelect.full_name} for ${new Date(selectedSlot.start_time).toLocaleString()}.`,
+      });
+      
+      setIsSlotPickerOpen(false);
+      // Instead of navigating, show submission confirmation
+      setShowSubmissionConfirm(true);
+    } catch (error) {
+      toast.error('Booking Failed', {
+        description: 'Could not book this slot. It may have just been taken.',
+      });
+    }
+  };
+
+  // Check status and redirect if locked
+  useEffect(() => {
+    if (request) {
+        if (request.status === 'approved' || request.status === 'completed') {
+            toast.info('Selection Locked', {
+                description: 'Commissioner selection cannot be changed after approval.',
+            });
+            navigate(ROUTES.REQUEST_STATUS.replace(':id', id || ''));
+        }
+    }
+  }, [request, navigate, id]);
+
+  const handleSubmissionConfirm = async () => {
+    if (!id || !request) return;
+    
+    // If already in review (re-booking), just navigate back
+    if (request.status === 'needs_review') {
+        toast.success('Appointment Updated', {
+            description: 'Your appointment has been rescheduled.',
+        });
+        navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
+        return;
+    }
+
+    // If Draft Ready, submit to move to Needs Review
+    try {
+        await submitRequest(Number(id)).unwrap();
+        toast.success('Affidavit Submitted', {
+            description: 'Your request is now in review.',
+        });
+        navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
+    } catch (error) {
+        toast.error('Submission Failed', {
+            description: 'Please try again.',
+        });
+    }
+  };
+
+  // Legacy selection without slot (fallback)
   const handleConfirmSelect = async () => {
     if (!id || !commissionerToSelect) return;
     
@@ -222,6 +302,21 @@ export function SelectCommissionerPage() {
         </div>
       </div>
 
+      {/* Search Bar */}
+      {!hasSelectedCommissioner && (
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search by name, organization, or number..." 
+              className="pl-9 max-w-md"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Commissioners List */}
       {hasSelectedCommissioner ? (
         <Card>
@@ -246,9 +341,20 @@ export function SelectCommissionerPage() {
             </p>
           </CardContent>
         </Card>
+      ) : filteredCommissioners?.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <h3 className="text-xl font-semibold mb-2">No Commissioners Found</h3>
+            <p className="text-muted-foreground">
+              We couldn't find any commissioners matching "{searchQuery}".
+            </p>
+            <Button variant="link" onClick={() => setSearchQuery('')}>Clear Search</Button>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {commissioners.map((commissioner) => {
+          {filteredCommissioners!.map((commissioner) => {
             const availability = formatAvailability(commissioner.availability);
             const isSelected = selectedId === commissioner.id;
 
@@ -413,7 +519,55 @@ export function SelectCommissionerPage() {
         </CardContent>
       </Card>
 
-      {/* Confirmation Dialog */}
+      {/* Slot Selection Dialog */}
+      <AlertDialog open={isSlotPickerOpen} onOpenChange={setIsSlotPickerOpen}>
+        <AlertDialogContent className="max-w-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Schedule Appointment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a time to meet with <strong>{commissionerToSelect?.full_name}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="py-4">
+            {commissionerToSelect && (
+              <TimeSlotPicker 
+                commissionerId={commissionerToSelect.id}
+                onSelectSlot={setSelectedSlot}
+                selectedSlot={selectedSlot}
+                actions={
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedSlot(null);
+                        setIsSlotPickerOpen(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      disabled={!selectedSlot || isBooking}
+                      onClick={handleBookAppointment}
+                    >
+                      {isBooking ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Booking...
+                        </>
+                      ) : (
+                        'Confirm Appointment'
+                      )}
+                    </Button>
+                  </>
+                }
+              />
+            )}
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog (Legacy/Fallback) */}
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -428,6 +582,25 @@ export function SelectCommissionerPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmSelect}>
               Confirm Selection
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Submission Confirmation Dialog */}
+      <AlertDialog open={showSubmissionConfirm} onOpenChange={setShowSubmissionConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your appointment is booked. Please confirm to submit your affidavit for review.
+              <br /><br />
+              Once approved, you will be able to download your document and proceed to your appointment.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleSubmissionConfirm} disabled={isSubmitting}>
+              {isSubmitting ? 'Submitting...' : 'Confirm Submission'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

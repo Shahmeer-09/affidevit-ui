@@ -15,7 +15,7 @@ import {
   Sparkles,
   GitBranch,
   Users,
-  // MessageSquare,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -65,8 +65,9 @@ const navConfig: Record<PortalType, { title: string; items: NavItem[] }> = {
       // { label: 'Cost Analytics', href: ROUTES.ADMIN_COSTS, icon: DollarSign },
       // { label: 'Learning Reports', href: ROUTES.ADMIN_LEARNING, icon: Lightbulb },
       // { label: 'Friction Reports', href: ROUTES.ADMIN_FRICTION, icon: AlertTriangle },
+      { label: 'Reviewer Feedback', href: ROUTES.ADMIN_REVIEWER_FEEDBACK, icon: MessageSquare },
       { label: 'Staff Management', href: ROUTES.ADMIN_STAFF, icon: Users },
-      // { label: 'Support Tickets', href: ROUTES.ADMIN_SUPPORT, icon: MessageSquare },
+      { label: 'Support Tickets', href: ROUTES.ADMIN_SUPPORT, icon: MessageSquare },
       { label: 'Settings', href: ROUTES.ADMIN_SETTINGS, icon: Settings },
     ],
   },
@@ -88,7 +89,14 @@ export function DashboardLayout({ portal }: DashboardLayoutProps) {
   // Count pending (not approved) commissioners
   const pendingCommissioners = commissionersData?.results?.filter(c => !c.is_featured).length || 0;
 
-  const config = navConfig[portal];
+  const baseConfig = navConfig[portal];
+  const config = {
+    ...baseConfig,
+    items:
+      portal === 'admin' && !user?.is_superuser
+        ? baseConfig.items.filter((item) => item.href !== ROUTES.ADMIN_DECISION_TREE)
+        : baseConfig.items,
+  };
 
   const handleLogout = () => {
     logout();

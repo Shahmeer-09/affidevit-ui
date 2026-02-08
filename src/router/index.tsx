@@ -33,6 +33,7 @@ import { CommissionerDashboardPage } from '@/pages/commissioner/CommissionerDash
 import { CommissionerRequestPage } from '@/pages/commissioner/CommissionerRequestPage';
 import { CommissionerStampsPage } from '@/pages/commissioner/CommissionerStampsPage';
 import { CommissionerSettingsPage } from '@/pages/commissioner/CommissionerSettingsPage';
+import { CommissionerSchedulePage } from '@/pages/commissioner/CommissionerSchedulePage';
 
 // Reviewer Pages
 import { ReviewerDashboardPage } from '@/pages/reviewer/ReviewerDashboardPage';
@@ -50,8 +51,9 @@ import { AdminCostsPage } from '@/pages/admin/AdminCostsPage';
 import { AdminLearningPage } from '@/pages/admin/AdminLearningPage';
 import { AdminFrictionPage } from '@/pages/admin/AdminFrictionPage';
 import { AdminStaffPage } from '@/pages/admin/AdminStaffPage';
+import { AdminReviewerFeedbackPage } from '@/pages/admin/AdminReviewerFeedbackPage';
 import { AdminSettingsPage } from '@/pages/admin/AdminSettingsPage';
-// import { AdminSupportPage } from '@/pages/admin/AdminSupportPage';
+import { AdminSupportPage } from '@/pages/admin/AdminSupportPage';
 
 // Protected Route Wrapper
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -65,6 +67,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.AFFIDAVIT_TYPES, element: <AffidavitTypesPage /> },
       { path: ROUTES.AFFIDAVIT_TYPE_DETAIL, element: <AffidavitTypeDetailPage /> },
       { path: ROUTES.DECISION_TREE, element: <DecisionTreePage /> },
+      { path: ROUTES.REQUEST_CREATE, element: <RequestCreatePage /> },
     ],
   },
   
@@ -89,7 +92,6 @@ export const router = createBrowserRouter([
     ),
     children: [
       { path: ROUTES.MY_REQUESTS, element: <MyRequestsPage /> },
-      { path: ROUTES.REQUEST_CREATE, element: <RequestCreatePage /> },
       { path: ROUTES.REQUEST_STATUS, element: <RequestStatusPage /> },
       { path: ROUTES.REQUEST_SELECT_COMMISSIONER, element: <SelectCommissionerPage /> },
       { path: ROUTES.PROFILE, element: <ProfilePage /> },
@@ -108,6 +110,7 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.COMMISSIONER_DASHBOARD, element: <Navigate to={ROUTES.COMMISSIONER_LOOKUP} replace /> },
       { path: ROUTES.COMMISSIONER_LOOKUP, element: <CommissionerDashboardPage /> },
+      { path: ROUTES.COMMISSIONER_SCHEDULE, element: <CommissionerSchedulePage /> },
       { path: ROUTES.COMMISSIONER_REQUEST, element: <CommissionerRequestPage /> },
       { path: ROUTES.COMMISSIONER_STAMPS, element: <CommissionerStampsPage /> },
       { path: ROUTES.COMMISSIONER_SETTINGS, element: <CommissionerSettingsPage /> },
@@ -138,17 +141,18 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.ADMIN_DASHBOARD, element: <AdminTypesPage /> },
       { path: ROUTES.ADMIN_TYPES, element: <AdminTypesPage /> },
-      { path: ROUTES.ADMIN_TYPE_EDIT, element: <AdminTypeEditPage /> },
+      { path: ROUTES.ADMIN_TYPE_EDIT, element: <ProtectedRoute requiredRoles="admin" requireSuperuser><AdminTypeEditPage /></ProtectedRoute> },
       { path: ROUTES.ADMIN_TYPE_REQUESTS, element: <AdminTypeRequestsPage /> },
       { path: ROUTES.ADMIN_AI_SETTINGS, element: <AdminAISettingsPage /> },
-      { path: ROUTES.ADMIN_DECISION_TREE, element: <AdminDecisionTreePage /> },
+      { path: ROUTES.ADMIN_DECISION_TREE, element: <ProtectedRoute requiredRoles="admin" requireSuperuser><AdminDecisionTreePage /></ProtectedRoute> },
       { path: ROUTES.ADMIN_COSTS, element: <AdminCostsPage /> },
       { path: ROUTES.ADMIN_LEARNING, element: <AdminLearningPage /> },
       { path: ROUTES.ADMIN_FRICTION, element: <AdminFrictionPage /> },
+      { path: ROUTES.ADMIN_REVIEWER_FEEDBACK, element: <AdminReviewerFeedbackPage /> },
       { path: ROUTES.ADMIN_STAFF, element: <AdminStaffPage /> },
       { path: ROUTES.ADMIN_SETTINGS, element: <AdminSettingsPage /> },
-      // { path: ROUTES.ADMIN_SUPPORT, element: <AdminSupportPage /> },
-      // { path: ROUTES.ADMIN_TICKET_DETAIL, element: <TicketDetailPage /> },
+      { path: ROUTES.ADMIN_SUPPORT, element: <AdminSupportPage /> },
+      { path: ROUTES.ADMIN_TICKET_DETAIL, element: <TicketDetailPage /> },
     ],
   },
   

@@ -106,6 +106,7 @@ export interface IntakeQuestion {
   help_text?: string; // Added help_text
   placeholder?: string;
   required: boolean;
+  type_locked?: boolean; // Added to prevent frontend type overrides
   options?: { value: string; label: string }[];
   validation?: {
     min?: number;
@@ -288,6 +289,7 @@ export interface Request {
   submitted_at?: string;
   approved_at?: string;
   completed_at?: string;
+  appointment_date?: string;
 }
 
 export interface QAFlag {

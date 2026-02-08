@@ -34,6 +34,7 @@ export const ROUTES = {
   // Commissioner Routes
   COMMISSIONER_DASHBOARD: '/commissioner',
   COMMISSIONER_LOOKUP: '/commissioner/lookup',
+  COMMISSIONER_SCHEDULE: '/commissioner/schedule',
   COMMISSIONER_REQUEST: '/commissioner/request/:code',
   COMMISSIONER_STAMPS: '/commissioner/stamps',
   COMMISSIONER_SETTINGS: '/commissioner/settings',
@@ -53,6 +54,7 @@ export const ROUTES = {
   ADMIN_COSTS: '/admin/costs',
   ADMIN_LEARNING: '/admin/learning',
   ADMIN_FRICTION: '/admin/friction',
+  ADMIN_REVIEWER_FEEDBACK: '/admin/reviewer-feedback',
   ADMIN_USERS: '/admin/users',
   ADMIN_STAFF: '/admin/staff',
   ADMIN_SETTINGS: '/admin/settings',

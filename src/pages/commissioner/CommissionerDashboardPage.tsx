@@ -11,6 +11,7 @@ import {
   useGetAssignedRequestsQuery, 
   useLazyLookupRequestQuery 
 } from '@/store/api/commissionerApi';
+import { useToast } from '@/hooks/use-toast';
 import {
   Search,
   Clock,
@@ -20,6 +21,7 @@ import {
   Loader2,
   User,
   Filter,
+  Calendar,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Request } from '@/types';
@@ -32,6 +34,7 @@ interface LookupRequestResult extends Request {
 
 export function CommissionerDashboardPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
   
   // Search state
@@ -55,7 +58,15 @@ export function CommissionerDashboardPage() {
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchCode.trim()) return;
-    await lookupRequest(searchCode.trim().toUpperCase());
+    try {
+      await lookupRequest(searchCode.trim()).unwrap();
+    } catch (err: any) {
+      toast({
+        title: "Search Failed",
+        description: err?.data?.error || "An error occurred during search.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleViewRequest = (code: string) => {
@@ -65,13 +76,19 @@ export function CommissionerDashboardPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">
-          Welcome, {user?.first_name || 'Commissioner'}!
-        </h1>
-        <p className="text-muted-foreground">
-          Look up requests by code or view your assigned affidavits
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">
+            Welcome, {user?.first_name || 'Commissioner'}!
+          </h1>
+          <p className="text-muted-foreground">
+            Look up requests by code or view your assigned affidavits
+          </p>
+        </div>
+        <Button onClick={() => navigate(ROUTES.COMMISSIONER_SCHEDULE)}>
+          <Calendar className="h-4 w-4 mr-2" />
+          My Schedule
+        </Button>
       </div>
 
       {/* Search by Code - Primary Action */}
@@ -90,7 +107,7 @@ export function CommissionerDashboardPage() {
             <Input
               placeholder="Enter code (e.g., AFF-XXXX-Y)"
               value={searchCode}
-              onChange={(e) => setSearchCode(e.target.value.toUpperCase())}
+              onChange={(e) => setSearchCode(e.target.value)}
               className="font-mono text-lg flex-1"
             />
             <Button type="submit" disabled={lookupLoading || !searchCode.trim()}>
