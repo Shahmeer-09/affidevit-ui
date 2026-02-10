@@ -226,6 +226,40 @@ export interface TypeRequestsParams {
 }
 
 // Affidavit Type Admin types
+export interface ComparisonClause {
+  left_field: string;
+  operator: 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'ne';
+  right_field: string;
+  compare_as?: 'number' | 'date' | 'string';
+  join_with?: 'AND' | 'OR';
+}
+
+export interface ValidationRule {
+  id?: string;
+  type: 'comparison' | 'required_if' | 'disallow_contains';
+  primary_field: string;
+  secondary_field?: string;
+  operator?: 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'ne';
+  compare_as?: 'number' | 'date' | 'string';
+  comparisons?: ComparisonClause[];
+  negate?: boolean;
+  condition_field?: string;
+  condition_value?: string;
+  required_field?: string;
+  field?: string;
+  pattern?: string;
+  mode?: 'contains' | 'regex';
+  case_sensitive?: boolean;
+  target_field?: string;
+  message: string;
+}
+
+export interface ValidationRulesResponse {
+  affidavit_type_id: number;
+  affidavit_type_name?: string;
+  validation_rules: ValidationRule[];
+}
+
 export interface AffidavitTypeAdmin {
   id: number;
   name: string;
@@ -244,6 +278,7 @@ export interface AffidavitTypeAdmin {
   policy_json: Record<string, unknown>;
   template_html: string;
   disallowed_phrases: string[];
+  validation_rules: ValidationRule[];
   questions_count: number;
   created_at: string;
   updated_at: string;
@@ -669,6 +704,26 @@ export const adminApi = baseApi.injectEndpoints({
     }),
 
     // =========================================================================
+    // Validation Rules
+    // =========================================================================
+
+    // Get validation rules for an affidavit type
+    getValidationRules: builder.query<ValidationRulesResponse, number>({
+      query: (id) => `/admin/affidavit-types/${id}/validation-rules/`,
+      providesTags: (_result, _error, id) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // Update validation rules for an affidavit type
+    updateValidationRules: builder.mutation<ValidationRulesResponse, { id: number; rules: ValidationRule[] }>({
+      query: ({ id, rules }) => ({
+        url: `/admin/affidavit-types/${id}/validation-rules/`,
+        method: 'PUT',
+        body: { validation_rules: rules },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // =========================================================================
     // AI Base Instruction
     // =========================================================================
 
@@ -1022,6 +1077,9 @@ export const {
   useGetDisallowedPhrasesQuery,
   useUpdateDisallowedPhrasesMutation,
   useAddDisallowedPhrasesMutation,
+  // Validation Rules
+  useGetValidationRulesQuery,
+  useUpdateValidationRulesMutation,
   // AI Base Instruction
   useGetAIBaseInstructionQuery,
   useUpdateAIBaseInstructionMutation,

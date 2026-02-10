@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DashboardHeader, TierBadge } from '@/components/features';
-import { QuestionBuilder } from '@/components/admin';
+import { QuestionBuilder, ValidationRulesEditor } from '@/components/admin';
 import { PolicyGenerator } from '@/components/admin/PolicyGenerator';
 import { DisallowedPhrasesEditor } from '@/components/admin/DisallowedPhrasesEditor';
 import { DecisionTreeEditor } from '@/components/admin/DecisionTreeEditor';
@@ -33,6 +33,7 @@ import {
   Upload,
   Ban,
   GitBranch,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AffidavitTier, DefaultMode } from '@/types';
@@ -286,7 +287,7 @@ export function AdminTypeEditPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="basic" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Basic Info</span>
@@ -303,6 +304,10 @@ export function AdminTypeEditPage() {
           <TabsTrigger value="discovery" className="flex items-center gap-2">
             <GitBranch className="h-4 w-4" />
             <span className="hidden sm:inline">Discovery</span>
+          </TabsTrigger>
+          <TabsTrigger value="validation" className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="hidden sm:inline">Validation</span>
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
@@ -517,6 +522,30 @@ export function AdminTypeEditPage() {
                   <GitBranch className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">
                     Please save the affidavit type first before configuring discovery paths.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Validation Rules Tab */}
+        <TabsContent value="validation" className="space-y-6">
+          {id && id !== 'new' && !isNaN(Number(id)) ? (
+            <ValidationRulesEditor affidavitTypeId={id} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Validation Rules</CardTitle>
+                <CardDescription>
+                  Save the affidavit type first to configure validation rules.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <ShieldCheck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    Please save the affidavit type first before adding validation rules.
                   </p>
                 </div>
               </CardContent>
