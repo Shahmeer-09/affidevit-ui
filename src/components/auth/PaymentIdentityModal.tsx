@@ -91,10 +91,15 @@ export const PaymentIdentityModal: React.FC<PaymentIdentityModalProps> = ({
 
       if (onSuccess) onSuccess();
 
-      // Redirect to Commissioner Selection
-      // Replace :id param
-      const path = ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', result.request.id.toString());
-      navigate(path);
+      const requestStatus = result.request?.status;
+      const defaultMode = result.request?.affidavit_type?.default_mode;
+
+      if (requestStatus === 'needs_review' || defaultMode === 'review_first') {
+        navigate(ROUTES.REQUEST_STATUS.replace(':id', result.request.id.toString()));
+        return;
+      }
+
+      navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', result.request.id.toString()));
       
     } catch (err) {
       const data = (err as { data?: Record<string, unknown> })?.data;

@@ -318,6 +318,9 @@ export function RequestStatusPage() {
   const isDraftReady = normalizedStatus === 'DRAFT_READY';
   const needsClarification = normalizedStatus === 'NEEDS_CLARIFICATION';
   const needsReview = normalizedStatus === 'NEEDS_REVIEW';
+  const isApproved = normalizedStatus === 'APPROVED';
+  const isCompleted = normalizedStatus === 'COMPLETED';
+  const isReviewFirstType = request?.affidavit_type?.default_mode === 'review_first';
 
   const handleScheduleAction = async () => {
     if (!id) return;
@@ -532,76 +535,79 @@ export function RequestStatusPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Commissioner Selection */}
-              {/* Show for APPROVED (Locked) */}
-              {normalizedStatus === 'APPROVED' && (
+              {needsReview && isReviewFirstType && !request.commissioner && (
                 <div className="space-y-2">
-                  <Label>Commissioner</Label>
-                  {/* ... Locked UI ... */}
+                  <Label>Commissioner Appointment</Label>
                   <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
-                      <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
-                      <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
-                      <p className="text-xs text-muted-foreground">
-                        Commissioner selection cannot be changed after approval.
-                      </p>
+                    <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
+                    <p className="font-medium text-sm text-muted-foreground">Waiting for Reviewer Approval</p>
+                    <p className="text-xs text-muted-foreground">
+                      You’ll be able to select a commissioner after a Reviewer approves your affidavit.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {isCompleted && (
+                <div className="space-y-2">
+                  <Label>Commissioner Appointment</Label>
+                  <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
+                    <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
+                    <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
+                    <p className="text-xs text-muted-foreground">
+                      Commissioner selection cannot be changed after notarization is completed.
+                    </p>
                   </div>
                   {request.commissioner && (
                     <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-                        <div className="flex items-center gap-3">
-                          {/* Commissioner Image */}
-                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <User className="h-5 w-5 text-primary" />
-                            </div>
-                          <div>
-                            <p className="font-medium text-green-700 dark:text-green-300">
-                              {request.commissioner.first_name} {request.commissioner.last_name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Assigned Commissioner
-                            </p>
-                          </div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-5 w-5 text-primary" />
                         </div>
+                        <div>
+                          <p className="font-medium text-green-700 dark:text-green-300">
+                            {request.commissioner.first_name} {request.commissioner.last_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Assigned Commissioner</p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Show for DRAFT_READY or NEEDS_REVIEW (Active Selection) */}
-              {(isDraftReady || needsReview) && (
-                 <div className="space-y-2">
+              {(isApproved || isDraftReady || (needsReview && (!isReviewFirstType || !!request.commissioner))) && !isCompleted && (
+                <div className="space-y-2">
                   <Label>Commissioner Appointment</Label>
                   {request.commissioner ? (
                     <div className="space-y-3">
                       <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <User className="h-5 w-5 text-primary" />
+                            <User className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <p className="font-medium text-blue-700 dark:text-blue-300">
                               {request.commissioner.first_name} {request.commissioner.last_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {needsReview ? 'Pending Review' : 'Selected'}
+                              {needsReview ? 'Pending Review' : isApproved ? 'Approved' : 'Selected'}
                             </p>
                           </div>
                         </div>
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id)))}
                         className="w-full"
                       >
-                        {needsReview ? 'Change Appointment' : 'Select Commissioner'}
+                        Change Appointment
                       </Button>
                     </div>
                   ) : (
-                    <Button 
-                      variant="outline" 
-                      className="w-full justify-start"
-                      onClick={handleScheduleAction}
-                    >
+                    <Button variant="outline" className="w-full justify-start" onClick={handleScheduleAction}>
                       <User className="h-4 w-4 mr-2" />
                       {request.is_paid ? 'Select Commissioner' : 'Pay & Select Commissioner'}
                     </Button>
