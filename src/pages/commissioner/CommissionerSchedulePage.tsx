@@ -9,11 +9,6 @@ import { Calendar, User, FileText, ArrowRight, Loader2 } from 'lucide-react';
 export function CommissionerSchedulePage() {
   const navigate = useNavigate();
   const { data: schedule, isLoading } = useGetCommissionerScheduleQuery();
-  const sortedSchedule = Array.isArray(schedule)
-    ? [...schedule].sort(
-        (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
-      )
-    : [];
 
   const handleViewRequest = (code: string) => {
     navigate(ROUTES.COMMISSIONER_REQUEST.replace(':code', code));
@@ -73,7 +68,7 @@ export function CommissionerSchedulePage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {sortedSchedule.map((slot) => {
+              {schedule.map((slot) => {
                 const { month, day, dateTime } = formatSlotParts(slot.start_time);
                 return (
                 <div

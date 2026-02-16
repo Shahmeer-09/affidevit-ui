@@ -119,12 +119,12 @@ export function SelectCommissionerPage() {
   // Check status and redirect if locked
   useEffect(() => {
     if (request) {
-      if (request.status === 'completed') {
-        toast.info('Selection Locked', {
-          description: 'Commissioner selection cannot be changed after notarization is completed.',
-        });
-        navigate(ROUTES.REQUEST_STATUS.replace(':id', id || ''));
-      }
+        if (request.status === 'approved' || request.status === 'completed') {
+            toast.info('Selection Locked', {
+                description: 'Commissioner selection cannot be changed after approval.',
+            });
+            navigate(ROUTES.REQUEST_STATUS.replace(':id', id || ''));
+        }
     }
   }, [request, navigate, id]);
 
@@ -138,15 +138,6 @@ export function SelectCommissionerPage() {
         });
         navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
         return;
-    }
-    
-    // If approved, booking is allowed immediately (no resubmission needed)
-    if (request.status === 'approved') {
-      toast.success('Appointment Confirmed', {
-        description: 'Your commissioner appointment has been booked.',
-      });
-      navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
-      return;
     }
 
     // If Draft Ready, submit to move to Needs Review
