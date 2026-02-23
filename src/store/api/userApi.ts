@@ -11,6 +11,7 @@ import type {
 export interface CreateRequestRequest {
   affidavit_type: number;
   answers_json?: Record<string, unknown>;
+  draft_text?: string;
 }
 
 export interface CreateRequestResponse {
@@ -21,6 +22,7 @@ export interface CreateRequestResponse {
 
 export interface AutoSaveRequest {
   answers_json: Record<string, unknown>;
+  draft_text?: string;
 }
 
 export interface SubmitRequestResponse {
@@ -298,16 +300,17 @@ export const userApi = baseApi.injectEndpoints({
       invalidatesTags: ['MyRequests'],
     }),
 
-    // Mark request as paid (fake payment for now)
+    // Mark request as paid
     markRequestPaid: builder.mutation<
-      { success: boolean; message: string; request: Request },
-      number
+      { success: boolean; message: string; request: Request; next_step?: 'review_queue' | 'select_commissioner' | 'thank_you' | 'scheduling' },
+      { id: number; payment_reference?: string }
     >({
-      query: (id) => ({
+      query: ({ id, payment_reference }) => ({
         url: `/requests/${id}/mark-paid/`,
         method: 'POST',
+        body: payment_reference ? { payment_reference } : {},
       }),
-      invalidatesTags: (_result, _error, id) => [
+      invalidatesTags: (_result, _error, { id }) => [
         { type: 'Request', id },
         'MyRequests',
       ],

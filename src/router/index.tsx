@@ -18,12 +18,15 @@ import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { CommissionerRegisterPage } from '@/pages/auth/CommissionerRegisterPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
+import { VerifyOtpPage } from '@/pages/auth/VerifyOtpPage';
 
 // User Pages
 import { MyRequestsPage } from '@/pages/user/MyRequestsPage';
 import { RequestCreatePage } from '@/pages/user/RequestCreatePage';
 import { RequestStatusPage } from '@/pages/user/RequestStatusPage';
 import { SelectCommissionerPage } from '@/pages/user/SelectCommissionerPage';
+import { PaymentDetailsPage } from '@/pages/user/PaymentDetailsPage';
+import { ThankYouPage } from '@/pages/user/ThankYouPage';
 import { ProfilePage } from '@/pages/user/ProfilePage';
 import { SupportPage } from '@/pages/user/SupportPage';
 import { TicketDetailPage } from '@/pages/user/TicketDetailPage';
@@ -80,6 +83,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.REGISTER_COMMISSIONER, element: <CommissionerRegisterPage /> },
       { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage /> },
       { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage /> },
+      { path: ROUTES.VERIFY_OTP, element: <VerifyOtpPage /> },
     ],
   },
   
@@ -93,6 +97,8 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.MY_REQUESTS, element: <MyRequestsPage /> },
       { path: ROUTES.REQUEST_STATUS, element: <RequestStatusPage /> },
+      { path: ROUTES.REQUEST_PAYMENT, element: <PaymentDetailsPage /> },
+      { path: ROUTES.REQUEST_THANK_YOU, element: <ThankYouPage /> },
       { path: ROUTES.REQUEST_SELECT_COMMISSIONER, element: <SelectCommissionerPage /> },
       { path: ROUTES.PROFILE, element: <ProfilePage /> },
       { path: ROUTES.SUPPORT, element: <SupportPage /> },

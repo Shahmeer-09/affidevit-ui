@@ -52,10 +52,12 @@ import {
   useGetCommissionerPaymentSummaryQuery,
   useGetCommissionerPaymentHistoryQuery,
   useMarkCommissionerPaidMutation,
+  useGenerateCommissionerSlotsMutation,
   type Commissioner,
   type Reviewer,
   type PaymentLog,
 } from '@/store/api/adminApi';
+import { useAuth } from '@/hooks/use-auth';
 import {
   Search,
   Plus,
@@ -74,6 +76,7 @@ import {
   CreditCard,
   Building,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -129,6 +132,8 @@ const initialFormData: StaffFormData = {
 };
 
 export function AdminStaffPage() {
+  const { user } = useAuth();
+  const isSuperuser = user?.is_superuser === true;
   const [activeTab, setActiveTab] = useState<StaffType>('commissioner');
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionerPage, setCommissionerPage] = useState(1);
@@ -183,6 +188,8 @@ export function AdminStaffPage() {
     { skip: !selectedCommissionerId }
   );
   const [markPaid, { isLoading: markingPaid }] = useMarkCommissionerPaidMutation();
+  const [generateSlots] = useGenerateCommissionerSlotsMutation();
+  const [generatingSlotsFor, setGeneratingSlotsFor] = useState<number | null>(null);
 
   // Debug payment history
   React.useEffect(() => {
@@ -381,6 +388,20 @@ export function AdminStaffPage() {
     const schedule = parseAvailability(commissioner.availability || {});
     setAvailabilitySchedule(schedule);
     setShowAvailabilityDialog(true);
+  };
+
+  // Generate slots handler (superuser only — fallback when cron didn't run)
+  const handleGenerateSlots = async (commissionerId: number) => {
+    setGeneratingSlotsFor(commissionerId);
+    try {
+      const result = await generateSlots({ id: commissionerId, days: 14 }).unwrap();
+      toast.success(result.message || `Generated ${result.slots_created} slots successfully.`);
+    } catch (error: unknown) {
+      const err = error as { data?: { detail?: string } };
+      toast.error(err.data?.detail || 'Failed to generate slots. Please try again.');
+    } finally {
+      setGeneratingSlotsFor(null);
+    }
   };
 
   // Stats - Calculate from actual data
@@ -616,6 +637,22 @@ export function AdminStaffPage() {
                                 <DollarSign className="h-4 w-4 mr-2" />
                                 Payment Details
                               </DropdownMenuItem>
+                              {isSuperuser && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleGenerateSlots(commissioner.id)}
+                                    disabled={generatingSlotsFor === commissioner.id}
+                                  >
+                                    {generatingSlotsFor === commissioner.id ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-4 w-4 mr-2" />
+                                    )}
+                                    Generate Slots
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleOpenEdit(commissioner)}>
                                 <Edit className="h-4 w-4 mr-2" />
@@ -938,7 +975,9 @@ export function AdminStaffPage() {
                       <Label htmlFor="commission_expiry">Commission Expiry Date</Label>
                       <Input
                         id="commission_expiry"
-                        type="date"
+                        type="text"
+                        placeholder="DD-MMM-YYYY (e.g. 15-Sep-2026)"
+                        maxLength={11}
                         value={formData.commission_expiry}
                         onChange={(e) => setFormData({ ...formData, commission_expiry: e.target.value })}
                       />
@@ -1117,7 +1156,9 @@ export function AdminStaffPage() {
                       <Label htmlFor="edit_commission_expiry">Commission Expiry Date</Label>
                       <Input
                         id="edit_commission_expiry"
-                        type="date"
+                        type="text"
+                        placeholder="DD-MMM-YYYY (e.g. 15-Sep-2026)"
+                        maxLength={11}
                         value={formData.commission_expiry}
                         onChange={(e) => setFormData({ ...formData, commission_expiry: e.target.value })}
                       />

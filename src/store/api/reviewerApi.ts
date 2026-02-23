@@ -3,11 +3,25 @@ import { baseApi } from './baseApi';
 import type { Request, ReviewQueueItem, ReviewerStats } from '@/types';
 
 // Request types
+export interface AutoFeedbackPair {
+  original_snippet: string;
+  revised_snippet: string;
+  feedback_target: 'drafter' | 'policy' | 'both' | 'skip';
+}
+
 export interface ApproveRequestParams {
   request_id: number;
   final_text?: string;
   issue_type?: string;
   issue_description?: string;
+  feedback_entries?: FeedbackEntry[];
+  auto_feedback_pairs?: AutoFeedbackPair[];
+}
+
+export interface FeedbackEntry {
+  category: string;
+  message: string;
+  feedback_target: 'drafter' | 'policy' | 'both';
 }
 
 export interface RejectRequestParams {
@@ -31,6 +45,7 @@ export interface FeedbackParams {
   request_id: number;
   category: string;
   message: string;
+  feedback_target?: 'drafter' | 'policy' | 'both';
 }
 
 export const reviewerApi = baseApi.injectEndpoints({
@@ -62,10 +77,10 @@ export const reviewerApi = baseApi.injectEndpoints({
       { success: boolean; message: string; request_code: string; pdf_generating: boolean },
       ApproveRequestParams
     >({
-      query: ({ request_id, final_text, issue_type, issue_description }) => ({
+      query: ({ request_id, final_text, issue_type, issue_description, feedback_entries, auto_feedback_pairs }) => ({
         url: `/reviewer/${request_id}/approve/`,
         method: 'POST',
-        body: { final_text, issue_type, issue_description },
+        body: { final_text, issue_type, issue_description, feedback_entries, auto_feedback_pairs },
       }),
       invalidatesTags: ['ReviewQueue', 'ReviewerStats'],
     }),
@@ -107,10 +122,10 @@ export const reviewerApi = baseApi.injectEndpoints({
       { id: number; request: number; reviewer: number; category: string; message: string; created_at: string },
       FeedbackParams
     >({
-      query: ({ request_id, category, message }) => ({
+      query: ({ request_id, category, message, feedback_target }) => ({
         url: `/reviewer/${request_id}/feedback/`,
         method: 'POST',
-        body: { category, message },
+        body: { category, message, feedback_target },
       }),
       invalidatesTags: (_result, _error, { request_id }) => [
         { type: 'ReviewRequest', id: request_id },

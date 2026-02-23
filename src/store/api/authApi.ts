@@ -64,6 +64,7 @@ export interface GuestSignupVerifyResponse {
   request: any;
   refresh: string;
   access: string;
+  next_step?: 'review_queue' | 'select_commissioner' | 'wait_for_draft';
 }
 
 export interface ProfileUpdateRequest {

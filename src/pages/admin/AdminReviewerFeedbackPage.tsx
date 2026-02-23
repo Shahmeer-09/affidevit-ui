@@ -209,8 +209,10 @@ export function AdminReviewerFeedbackPage() {
                     <TableRow>
                       <TableHead className="min-w-[140px]">Request</TableHead>
                       <TableHead className="min-w-[160px]">Reviewer</TableHead>
-                      <TableHead className="min-w-[160px]">Category</TableHead>
+                      <TableHead className="min-w-[140px]">Category</TableHead>
+                      <TableHead className="min-w-[120px]">Target</TableHead>
                       <TableHead>Feedback</TableHead>
+                      <TableHead className="min-w-[80px]">Seen</TableHead>
                       <TableHead className="min-w-[160px]">Submitted</TableHead>
                       <TableHead className="w-32" />
                     </TableRow>
@@ -232,7 +234,20 @@ export function AdminReviewerFeedbackPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <p className="line-clamp-2 text-sm text-muted-foreground">{log.message}</p>
+                          <Badge
+                            variant={log.feedback_target === 'both' ? 'default' : 'outline'}
+                            className="capitalize text-xs"
+                          >
+                            {log.feedback_target}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <p className="line-clamp-2 text-sm text-muted-foreground">
+                            {log.summary || log.message || (log.original_snippet ? 'Auto-detected correction' : '—')}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {log.times_seen}×
                         </TableCell>
                         <TableCell className="text-sm">
                           {format(new Date(log.created_at), 'PPpp')}
@@ -300,16 +315,54 @@ export function AdminReviewerFeedbackPage() {
                 <p className="text-xs uppercase text-muted-foreground">Reviewer</p>
                 <p className="font-medium">{selectedFeedback.reviewer_name}</p>
               </div>
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Category</p>
-                <Badge variant="outline" className="capitalize">
-                  {selectedFeedback.category.replace('_', ' ')}
-                </Badge>
+              <div className="flex gap-2 flex-wrap">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Category</p>
+                  <Badge variant="outline" className="capitalize">
+                    {selectedFeedback.category.replace('_', ' ')}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Target</p>
+                  <Badge variant={selectedFeedback.feedback_target === 'both' ? 'default' : 'secondary'} className="capitalize">
+                    {selectedFeedback.feedback_target}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Active</p>
+                  <Badge variant={selectedFeedback.is_active ? 'default' : 'destructive'}>
+                    {selectedFeedback.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Injected</p>
+                  <p className="text-sm font-medium">{selectedFeedback.times_seen}× into prompts</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs uppercase text-muted-foreground mb-1">Feedback</p>
-                <p className="text-sm whitespace-pre-line">{selectedFeedback.message}</p>
-              </div>
+              {selectedFeedback.original_snippet && selectedFeedback.revised_snippet ? (
+                <div className="space-y-2">
+                  <p className="text-xs uppercase text-muted-foreground">Auto-detected correction</p>
+                  {selectedFeedback.summary && (
+                    <div className="rounded-lg border p-3 bg-blue-50 dark:bg-blue-950/20">
+                      <p className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1">AI Lesson</p>
+                      <p className="text-sm font-medium">{selectedFeedback.summary}</p>
+                    </div>
+                  )}
+                  <div className="rounded-lg border p-3 bg-red-50 dark:bg-red-950/20">
+                    <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Original (AI)</p>
+                    <p className="text-sm text-muted-foreground">{selectedFeedback.original_snippet}</p>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-green-50 dark:bg-green-950/20">
+                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Corrected by reviewer</p>
+                    <p className="text-sm text-muted-foreground">{selectedFeedback.revised_snippet}</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground mb-1">Feedback Note</p>
+                  <p className="text-sm whitespace-pre-line">{selectedFeedback.message}</p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

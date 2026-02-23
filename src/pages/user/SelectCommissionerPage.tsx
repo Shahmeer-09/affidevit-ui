@@ -119,9 +119,10 @@ export function SelectCommissionerPage() {
   // Check status and redirect if locked
   useEffect(() => {
     if (request) {
-        if (request.status === 'approved' || request.status === 'completed') {
+        const appointmentAccepted = request.appointment_slot?.appointment_status === 'accepted';
+        if (request.status === 'completed' || appointmentAccepted) {
             toast.info('Selection Locked', {
-                description: 'Commissioner selection cannot be changed after approval.',
+                description: 'Commissioner selection cannot be changed after appointment confirmation.',
             });
             navigate(ROUTES.REQUEST_STATUS.replace(':id', id || ''));
         }
@@ -131,10 +132,12 @@ export function SelectCommissionerPage() {
   const handleSubmissionConfirm = async () => {
     if (!id || !request) return;
     
-    // If already in review (re-booking), just navigate back
-    if (request.status === 'needs_review') {
+    // If already in review/approved flow, just navigate back
+    if (request.status === 'needs_review' || request.status === 'approved') {
         toast.success('Appointment Updated', {
-            description: 'Your appointment has been rescheduled.',
+            description: request.status === 'approved'
+              ? 'Your appointment has been scheduled.'
+              : 'Your appointment has been rescheduled.',
         });
         navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
         return;

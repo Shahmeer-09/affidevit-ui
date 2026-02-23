@@ -538,7 +538,7 @@ export function AdminTypeRequestsPage() {
           </DialogHeader>
           <div className="overflow-y-auto max-h-[60vh] p-4 bg-white dark:bg-gray-900 rounded-lg border">
             <div 
-              className="prose dark:prose-invert max-w-none"
+              className="document-preview prose dark:prose-invert max-w-none"
               dangerouslySetInnerHTML={{ 
                 __html: selectedRequest?.final_text || selectedRequest?.draft_text || '<p>No draft available</p>' 
               }} 

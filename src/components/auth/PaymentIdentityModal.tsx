@@ -90,10 +90,11 @@ export const PaymentIdentityModal: React.FC<PaymentIdentityModalProps> = ({
       }));
 
       if (onSuccess) onSuccess();
+      onClose(); // Close modal before navigating to clean up state
 
-      // Redirect to Commissioner Selection
-      // Replace :id param
-      const path = ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', result.request.id.toString());
+      // Always go to payment page after identity verification
+      const path = ROUTES.REQUEST_PAYMENT.replace(':id', result.request.id.toString());
+      toast.success('Identity verified! Please complete payment to continue.');
       navigate(path);
       
     } catch (err) {
@@ -183,7 +184,7 @@ export const PaymentIdentityModal: React.FC<PaymentIdentityModalProps> = ({
         ) : (
           <form onSubmit={handleVerify} className="space-y-4">
             <p className="text-sm text-gray-600">
-              We sent a code to {formData.email}. (Mock: Enter 123456)
+              We sent a code to {formData.email} and {formData.phone_number}. Please enter it below to verify your identity and complete the payment.
             </p>
             <div>
               <label className="block text-sm font-medium">Verification Code</label>

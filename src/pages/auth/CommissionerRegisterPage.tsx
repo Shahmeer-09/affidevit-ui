@@ -24,10 +24,7 @@ const commissionerSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
-  phone: z.string().regex(
-    /^(\+?1[-.]?)?868[-.]?\d{3}[-.]?\d{4}$/,
-    'Please enter a valid Trinidad and Tobago phone number (e.g., 868-123-4567)'
-  ),
+  phone: z.string().min(1, 'Phone number is required'),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -106,7 +103,7 @@ export function CommissionerRegisterPage() {
   const onSubmit = async (data: CommissionerFormData) => {
     setError(null);
     try {
-      await registerCommissioner({
+      const result = await registerCommissioner({
         email: data.email,
         password: data.password,
         password_confirm: data.password_confirm,
@@ -126,7 +123,16 @@ export function CommissionerRegisterPage() {
         profile_image: profileImage || undefined,
       });
       
-      // Show success toast and redirect to login
+      // If OTP was sent, redirect to OTP verification page
+      if (result?.otp_sent && result?.user_id) {
+        navigate(ROUTES.VERIFY_OTP, {
+          replace: true,
+          state: { user_id: result.user_id, email: data.email, is_commissioner: true },
+        });
+        return;
+      }
+
+      // Fallback: show success and go to login
       toast({
         title: 'Registration Submitted!',
         description: 'Your request has been sent. Once approved by admin, you will be able to login.',
@@ -259,7 +265,7 @@ export function CommissionerRegisterPage() {
               <Input
                 id="phone"
                 type="tel"
-                placeholder="868-123-4567"
+                placeholder="e.g. +923136918598"
                 className="h-9"
                 {...register('phone')}
               />
@@ -360,7 +366,9 @@ export function CommissionerRegisterPage() {
               <Label htmlFor="commission_expiry" className="text-sm">Commission Expiry Date (optional)</Label>
               <Input
                 id="commission_expiry"
-                type="date"
+                type="text"
+                placeholder="DD-MMM-YYYY (e.g. 15-Sep-2026)"
+                maxLength={11}
                 className="h-9"
                 {...register('commission_expiry')}
               />

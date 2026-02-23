@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,12 +15,11 @@ import { TierBadge } from '@/components/features';
 import { 
   useGetAffidavitTypeQuery, 
   useCreateRequestMutation, 
-  useSubmitRequestMutation,
   useAutoSaveRequestMutation,
   useValidateRequestInputMutation
 } from '@/store/api/userApi';
 import { ROUTES } from '@/lib/constants';
-import { ArrowLeft, ArrowRight, Save, Loader2, AlertCircle, CheckCircle, Eye } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +34,6 @@ import { toast } from 'sonner';
 import type { IntakeQuestion } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { PaymentIdentityModal } from '@/components/auth/PaymentIdentityModal';
-import { DraftPreviewModal } from '@/components/features/DraftPreviewModal';
 
 type DraftState = {
   answers: Record<string, unknown>;
@@ -94,8 +93,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
   const [showDateConfirmation, setShowDateConfirmation] = useState(false);
   const [confirmationMessage, setConfirmationMessage] = useState({ entered: '', today: '' });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showDraftPreviewModal, setShowDraftPreviewModal] = useState(false);
-  const [generatedDraftText, setGeneratedDraftText] = useState<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: type, isLoading: isLoadingType, error: typeError } = useGetAffidavitTypeQuery(Number(typeId), {
@@ -104,7 +101,6 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
   });
   const [createRequest, { isLoading: isCreating }] = useCreateRequestMutation();
   const [autoSaveRequest] = useAutoSaveRequestMutation();
-  const [submitRequest] = useSubmitRequestMutation();
   const [validateInput, { isLoading: isValidating }] = useValidateRequestInputMutation();
 
   useEffect(() => {
@@ -345,36 +341,24 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         let idToSubmit = requestId;
 
         if (!idToSubmit) {
-          const result = await createRequest({ 
+          const result = await createRequest({
             affidavit_type: Number(typeId),
-            answers_json: answers 
+            answers_json: answers,
           }).unwrap();
           idToSubmit = result.id;
         } else {
           await autoSaveRequest({
             id: idToSubmit,
-            data: { answers_json: answers }
+            data: { answers_json: answers },
           }).unwrap();
         }
-        
-        await submitRequest(idToSubmit).unwrap();
-        
+
         localStorage.removeItem(`draft_${typeId}`);
-        
-        navigate(ROUTES.REQUEST_STATUS.replace(':id', String(idToSubmit)));
+        navigate(ROUTES.REQUEST_PAYMENT.replace(':id', String(idToSubmit)));
     } catch (error: any) {
          console.error('Submission failed', error);
          toast.error('Submission failed. Please try again.');
          setIsSubmitting(false);
-    }
-  };
-
-  const handleScheduleFromPreview = () => {
-    setShowDraftPreviewModal(false);
-    if (isAuthenticated) {
-        submitAuthenticatedRequest();
-    } else {
-        setShowPaymentModal(true);
     }
   };
 
@@ -425,17 +409,7 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         return; // Block submission
       }
 
-      // If validation passed and we have a draft, show preview
-      if (validationResult.draft_text) {
-        setGeneratedDraftText(validationResult.draft_text);
-        // Don't auto-open modal, show the success state instead
-        setShowDraftPreviewModal(false);
-        setIsSubmitting(false);
-        toast.success("Draft generated successfully!");
-        return;
-      }
-
-      // Fallback if no draft text (should not happen normally)
+      // Validation passed — proceed to payment (draft generated later via Celery)
       if (!isAuthenticated) {
         setShowPaymentModal(true);
         setIsSubmitting(false);
@@ -496,12 +470,25 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
   const handleSubmit = async () => {
     // Check for declaration dates
     let declarationDate: Date | null = null;
-    
-    // Try to find individual fields
-    const yearKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_year'));
-    const monthKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_month'));
-    const dayKey = Object.keys(answers).find(k => k.toLowerCase().includes('declaration_day'));
-    
+
+    // Match a key if it equals one of the bare names OR contains the declaration_* prefix variant.
+    // Uses word-boundary underscores to avoid false positives like "years_old" or "birthday".
+    const matchesDatePart = (key: string, bare: string) => {
+      const lk = key.toLowerCase();
+      return (
+        lk === bare ||                          // exact: "year", "month", "day"
+        lk === `declaration_${bare}` ||          // exact: "declaration_year"
+        lk.startsWith(`${bare}_`) ||             // prefix: "year_of_declaration"
+        lk.endsWith(`_${bare}`) ||               // suffix: "sworn_year"
+        lk.includes(`declaration_${bare}`)       // substring: "my_declaration_year"
+      );
+    };
+
+    // Try to find individual year / month / day fields
+    const yearKey  = Object.keys(answers).find(k => matchesDatePart(k, 'year'));
+    const monthKey = Object.keys(answers).find(k => matchesDatePart(k, 'month'));
+    const dayKey   = Object.keys(answers).find(k => matchesDatePart(k, 'day'));
+
     // Try to find combined field
     const dateKey = Object.keys(answers).find(k => k === 'declaration_date');
 
@@ -642,13 +629,11 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
       }
       case 'date':
         return (
-          <Input 
-            id={fieldKey} 
-            type="date" 
-            value={(value as string) || ''} 
-            onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
-            max={getMaxDate()}
-            min={getMinDate()}
+          <DatePicker
+            value={(value as string) || ''}
+            onChange={(val) => handleFieldChange(fieldKey, val)}
+            maxDate={getMaxDate() ? new Date(getMaxDate()!) : undefined}
+            minDate={getMinDate() ? new Date(getMinDate()!) : undefined}
           />
         );
       case 'select': {
@@ -731,55 +716,7 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
 
   return (
     <div className="container py-8 max-w-3xl">
-      {generatedDraftText ? (
-        <Card className="border-green-500/20 bg-green-50/50 dark:bg-green-950/10 mt-12">
-          <CardHeader className="text-center pb-2">
-             <div className="mx-auto bg-green-100 dark:bg-green-900/30 p-3 rounded-full w-fit mb-4">
-               <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-             </div>
-             <CardTitle className="text-2xl">Affidavit Draft Ready!</CardTitle>
-             <CardDescription className="text-base max-w-md mx-auto mt-2">
-               Your {type.name} has been successfully drafted based on your inputs.
-             </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4 py-6">
-             <div className="grid sm:grid-cols-2 gap-4">
-               <Button 
-                 size="lg" 
-                 variant="outline" 
-                 className="h-auto py-6 flex flex-col items-center gap-3 border-2 hover:border-primary/50 hover:bg-accent"
-                 onClick={() => setShowDraftPreviewModal(true)}
-               >
-                 <Eye className="h-8 w-8 text-primary mb-1" />
-                 <div className="text-center">
-                   <span className="block font-semibold text-lg">View Draft</span>
-                   <span className="block text-xs text-muted-foreground font-normal">Review the document</span>
-                 </div>
-               </Button>
-               
-               <Button 
-                 size="lg" 
-                 className="h-auto py-6 flex flex-col items-center gap-3 shadow-lg hover:shadow-xl transition-all"
-                 onClick={handleScheduleFromPreview}
-               >
-                 <ArrowRight className="h-8 w-8 mb-1" />
-                 <div className="text-center">
-                   <span className="block font-semibold text-lg">Schedule Now</span>
-                   <span className="block text-xs text-primary-foreground/80 font-normal">Proceed to notarization</span>
-                 </div>
-               </Button>
-             </div>
-             
-             <div className="text-center mt-6">
-               <Button variant="ghost" size="sm" onClick={() => setGeneratedDraftText('')}>
-                 <ArrowLeft className="h-4 w-4 mr-2" />
-                 Back to Edit Answers
-               </Button>
-             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
+      <>
           {/* Header */}
           <div className="mb-8">
             <Button variant="ghost" className="mb-4" onClick={() => navigate(-1)}>
@@ -902,8 +839,7 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
               )}
             </AlertDescription>
           </Alert>
-        </>
-      )}
+      </>
 
       <AlertDialog open={showDateConfirmation} onOpenChange={setShowDateConfirmation}>
         <AlertDialogContent>
@@ -922,19 +858,12 @@ function RequestCreateForm({ typeId }: { typeId?: string }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <DraftPreviewModal
-        isOpen={showDraftPreviewModal}
-        onClose={() => setShowDraftPreviewModal(false)}
-        draftHtml={generatedDraftText}
-        onSchedule={handleScheduleFromPreview}
-        answers={answers}
-      />
       <PaymentIdentityModal 
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         affidavitTypeId={Number(typeId)}
         answers={answers}
-        draftText={generatedDraftText}
+        draftText=""
         onSuccess={() => {
           localStorage.removeItem(`draft_${typeId}`);
         }}

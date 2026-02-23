@@ -1,4 +1,19 @@
 import { useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,17 +22,15 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-// import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import type { IntakeQuestion } from '@/store/api/adminApi';
 import {
   Plus,
   Edit,
   Trash2,
-  ChevronUp,
-  ChevronDown,
   Copy,
   AlertCircle,
+  GripVertical,
 } from 'lucide-react';
 
 const QUESTION_TYPES: { value: IntakeQuestion['type']; label: string; hasOptions: boolean }[] = [
@@ -35,6 +48,7 @@ const QUESTION_TYPES: { value: IntakeQuestion['type']; label: string; hasOptions
 interface QuestionBuilderProps {
   questions: IntakeQuestion[];
   onChange: (questions: IntakeQuestion[]) => void;
+  allowAdd?: boolean;
 }
 
 const generateId = () => `q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -49,10 +63,123 @@ const defaultQuestion: Omit<IntakeQuestion, 'id'> = {
   help_text: '',
 };
 
-export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
+// Sortable row component
+function SortableRow({
+  question,
+  index,
+  questions,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: {
+  question: IntakeQuestion;
+  index: number;
+  questions: IntakeQuestion[];
+  onEdit: (q: IntakeQuestion) => void;
+  onDuplicate: (q: IntakeQuestion) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: question.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style} className={isDragging ? 'bg-muted shadow-lg' : ''}>
+      <TableCell>
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      </TableCell>
+      <TableCell>
+        <div>
+          <p className="font-medium">{question.label}</p>
+          {question.placeholder && (
+            <p className="text-xs text-muted-foreground">{question.placeholder}</p>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline">
+          {QUESTION_TYPES.find((t) => t.value === question.type)?.label || question.type}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-center">
+        {question.required ? (
+          <Badge variant="default" className="text-xs">Yes</Badge>
+        ) : (
+          <Badge variant="secondary" className="text-xs">No</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        {question.show_if && (
+          <Badge variant="outline" className="text-xs">
+            If Q{questions.findIndex((q) => q.id === question.show_if?.field) + 1}
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onDuplicate(question)}
+            title="Duplicate"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onEdit(question)}
+            title="Edit"
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive"
+            onClick={() => onDelete(question.id)}
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+export function QuestionBuilder({ questions, onChange, allowAdd = false }: QuestionBuilderProps) {
   const [editingQuestion, setEditingQuestion] = useState<IntakeQuestion | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewQuestion, setIsNewQuestion] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = questions.findIndex((q) => q.id === active.id);
+    const newIndex = questions.findIndex((q) => q.id === over.id);
+    onChange(arrayMove(questions, oldIndex, newIndex));
+  };
 
   const handleAddQuestion = () => {
     setEditingQuestion({ ...defaultQuestion, id: generateId() });
@@ -61,17 +188,13 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
   };
 
   const handleEditQuestion = (question: IntakeQuestion) => {
-    // Ensure question has an ID (for legacy/imported data without one)
-    const questionWithId = question.id 
-      ? { ...question }
-      : { ...question, id: generateId() };
+    const questionWithId = question.id ? { ...question } : { ...question, id: generateId() };
     setEditingQuestion(questionWithId);
     setIsNewQuestion(false);
     setIsDialogOpen(true);
   };
 
   const handleDeleteQuestion = (id: string) => {
-    // Also remove any show_if references to this question
     const updatedQuestions = questions
       .filter((q) => q.id !== id)
       .map((q) => {
@@ -97,17 +220,8 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
     onChange(newQuestions);
   };
 
-  const handleMoveQuestion = (index: number, direction: 'up' | 'down') => {
-    const newQuestions = [...questions];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= questions.length) return;
-    [newQuestions[index], newQuestions[targetIndex]] = [newQuestions[targetIndex], newQuestions[index]];
-    onChange(newQuestions);
-  };
-
   const handleSaveQuestion = () => {
     if (!editingQuestion || !editingQuestion.label.trim()) return;
-
     if (isNewQuestion) {
       onChange([...questions, editingQuestion]);
     } else {
@@ -121,14 +235,6 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
     if (!editingQuestion) return;
     setEditingQuestion({ ...editingQuestion, [field]: value });
   };
-
-  // const handleOptionsChange = (optionsText: string) => {
-  //   const options = optionsText.split('\n')
-  //     .map(o => o.trim())
-  //     .filter(o => o.length > 0)
-  //     .map(o => ({ value: o, label: o }));
-  //   onChange({ ...question, options });
-  // };
 
   const hasOptionsType = editingQuestion
     ? QUESTION_TYPES.find((t) => t.value === editingQuestion.type)?.hasOptions
@@ -149,110 +255,42 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
         </div>
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10"></TableHead>
-                <TableHead>Label</TableHead>
-                <TableHead className="w-32">Type</TableHead>
-                <TableHead className="w-24 text-center">Required</TableHead>
-                <TableHead className="w-32">Condition</TableHead>
-                <TableHead className="w-32 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {questions.map((question, index) => (
-                <TableRow key={question.id}>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleMoveQuestion(index, 'up')}
-                        disabled={index === 0}
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleMoveQuestion(index, 'down')}
-                        disabled={index === questions.length - 1}
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{question.label}</p>
-                      {question.placeholder && (
-                        <p className="text-xs text-muted-foreground">{question.placeholder}</p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {QUESTION_TYPES.find((t) => t.value === question.type)?.label || question.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {question.required ? (
-                      <Badge variant="default" className="text-xs">Yes</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-xs">No</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {question.show_if && (
-                      <Badge variant="outline" className="text-xs">
-                        If Q{questions.findIndex((q) => q.id === question.show_if?.field) + 1}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleDuplicateQuestion(question)}
-                        title="Duplicate"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEditQuestion(question)}
-                        title="Edit"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive"
-                        onClick={() => handleDeleteQuestion(question.id)}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10"></TableHead>
+                    <TableHead>Label</TableHead>
+                    <TableHead className="w-32">Type</TableHead>
+                    <TableHead className="w-24 text-center">Required</TableHead>
+                    <TableHead className="w-32">Condition</TableHead>
+                    <TableHead className="w-32 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {questions.map((question, index) => (
+                    <SortableRow
+                      key={question.id}
+                      question={question}
+                      index={index}
+                      questions={questions}
+                      onEdit={handleEditQuestion}
+                      onDuplicate={handleDuplicateQuestion}
+                      onDelete={handleDeleteQuestion}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </SortableContext>
+          </DndContext>
 
-          {/* Hidden: Add Question button */}
-          {/* <Button onClick={handleAddQuestion} variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Question
-          </Button> */}
+          {allowAdd && (
+            <Button onClick={handleAddQuestion} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Question
+            </Button>
+          )}
         </>
       )}
 
@@ -261,14 +299,11 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isNewQuestion ? 'Add Question' : 'Edit Question'}</DialogTitle>
-            <DialogDescription>
-              Configure the question settings and conditional logic
-            </DialogDescription>
+            <DialogDescription>Configure the question settings and conditional logic</DialogDescription>
           </DialogHeader>
 
           {editingQuestion && (
             <div className="space-y-4 py-4">
-              {/* Basic Fields */}
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="q-type">Question Type *</Label>
@@ -276,14 +311,10 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                     value={editingQuestion.type}
                     onValueChange={(v) => handleQuestionChange('type', v as IntakeQuestion['type'])}
                   >
-                    <SelectTrigger id="q-type">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger id="q-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {QUESTION_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
+                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -294,14 +325,10 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                   <Input
                     id="q-id"
                     value={editingQuestion.id}
-                    onChange={(e) =>
-                      handleQuestionChange('id', e.target.value.replace(/\s/g, '_').toLowerCase())
-                    }
+                    onChange={(e) => handleQuestionChange('id', e.target.value.replace(/\s/g, '_').toLowerCase())}
                     placeholder="e.g., full_name"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Used for conditional logic references
-                  </p>
+                  <p className="text-xs text-muted-foreground">Used for conditional logic references</p>
                 </div>
               </div>
 
@@ -310,9 +337,7 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                 <Input
                   id="q-field-name"
                   value={editingQuestion.field_name || editingQuestion.id}
-                  onChange={(e) =>
-                    handleQuestionChange('field_name', e.target.value.replace(/\s/g, '_').toLowerCase())
-                  }
+                  onChange={(e) => handleQuestionChange('field_name', e.target.value.replace(/\s/g, '_').toLowerCase())}
                   placeholder="e.g., declarant_name"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -361,7 +386,6 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                 />
               </div>
 
-              {/* Options for select/radio/checkbox */}
               {hasOptionsType && (
                 <>
                   <Separator />
@@ -373,10 +397,7 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const newOptions = [
-                            ...(editingQuestion.options || []),
-                            { value: '', label: '' },
-                          ];
+                          const newOptions = [...(editingQuestion.options || []), { value: '', label: '' }];
                           handleQuestionChange('options', newOptions);
                         }}
                       >
@@ -384,12 +405,10 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                         Add Option
                       </Button>
                     </div>
-                    
+
                     {(!editingQuestion.options || editingQuestion.options.length === 0) ? (
                       <div className="text-center py-4 border-2 border-dashed rounded-lg">
-                        <p className="text-sm text-muted-foreground">
-                          No options yet. Click "Add Option" to create choices.
-                        </p>
+                        <p className="text-sm text-muted-foreground">No options yet. Click "Add Option" to create choices.</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -407,56 +426,20 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                                   handleQuestionChange('options', newOptions);
                                 }}
                               />
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Stored as: {option.value || '(auto-generated)'}
-                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">Stored as: {option.value || '(auto-generated)'}</p>
                             </div>
-                            <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => {
-                                  if (index > 0) {
-                                    const newOptions = [...editingQuestion.options!];
-                                    [newOptions[index], newOptions[index - 1]] = [newOptions[index - 1], newOptions[index]];
-                                    handleQuestionChange('options', newOptions);
-                                  }
-                                }}
-                                disabled={index === 0}
-                              >
-                                <ChevronUp className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => {
-                                  if (index < (editingQuestion.options?.length || 0) - 1) {
-                                    const newOptions = [...editingQuestion.options!];
-                                    [newOptions[index], newOptions[index + 1]] = [newOptions[index + 1], newOptions[index]];
-                                    handleQuestionChange('options', newOptions);
-                                  }
-                                }}
-                                disabled={index === (editingQuestion.options?.length || 0) - 1}
-                              >
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive"
-                                onClick={() => {
-                                  const newOptions = editingQuestion.options!.filter((_, i) => i !== index);
-                                  handleQuestionChange('options', newOptions);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => {
+                                const newOptions = editingQuestion.options!.filter((_, i) => i !== index);
+                                handleQuestionChange('options', newOptions);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -468,24 +451,18 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                 </>
               )}
 
-              {/* Conditional Logic */}
               <Separator />
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>Conditional Display</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Only show this question based on another answer
-                    </p>
+                    <p className="text-xs text-muted-foreground">Only show this question based on another answer</p>
                   </div>
                   <Switch
                     checked={!!editingQuestion.show_if}
                     onCheckedChange={(v) => {
                       if (v && otherQuestions.length > 0) {
-                        handleQuestionChange('show_if', {
-                          field: otherQuestions[0].id,
-                          value: '',
-                        });
+                        handleQuestionChange('show_if', { field: otherQuestions[0].id, value: '' });
                       } else {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const { show_if: _, ...rest } = editingQuestion;
@@ -502,9 +479,7 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                       <Label>Show when this question...</Label>
                       <Select
                         value={editingQuestion.show_if.field}
-                        onValueChange={(v) =>
-                          handleQuestionChange('show_if', { ...editingQuestion.show_if!, field: v })
-                        }
+                        onValueChange={(v) => handleQuestionChange('show_if', { ...editingQuestion.show_if!, field: v })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select question" />
@@ -512,8 +487,7 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                         <SelectContent>
                           {otherQuestions.map((q) => (
                             <SelectItem key={q.id} value={q.id}>
-                              Q{questions.findIndex((oq) => oq.id === q.id) + 1}: {q.label.slice(0, 30)}
-                              {q.label.length > 30 ? '...' : ''}
+                              Q{questions.findIndex((oq) => oq.id === q.id) + 1}: {q.label.slice(0, 30)}{q.label.length > 30 ? '...' : ''}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -523,36 +497,19 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
                     <div className="space-y-2">
                       <Label>...has this value</Label>
                       {(() => {
-                        const conditionQuestion = questions.find(
-                          (q) => q.id === editingQuestion.show_if?.field
-                        );
-                        const conditionHasOptions =
-                          conditionQuestion &&
-                          ['select', 'radio', 'checkbox'].includes(conditionQuestion.type);
+                        const conditionQuestion = questions.find((q) => q.id === editingQuestion.show_if?.field);
+                        const conditionHasOptions = conditionQuestion && ['select', 'radio', 'checkbox'].includes(conditionQuestion.type);
 
                         if (conditionHasOptions && conditionQuestion?.options?.length) {
                           return (
                             <Select
-                              value={
-                                Array.isArray(editingQuestion.show_if.value)
-                                  ? editingQuestion.show_if.value[0]
-                                  : editingQuestion.show_if.value
-                              }
-                              onValueChange={(v) =>
-                                handleQuestionChange('show_if', {
-                                  ...editingQuestion.show_if!,
-                                  value: v,
-                                })
-                              }
+                              value={Array.isArray(editingQuestion.show_if.value) ? editingQuestion.show_if.value[0] : editingQuestion.show_if.value}
+                              onValueChange={(v) => handleQuestionChange('show_if', { ...editingQuestion.show_if!, value: v })}
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select value" />
-                              </SelectTrigger>
+                              <SelectTrigger><SelectValue placeholder="Select value" /></SelectTrigger>
                               <SelectContent>
                                 {conditionQuestion.options.map((opt) => (
-                                  <SelectItem key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </SelectItem>
+                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -561,17 +518,8 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
 
                         return (
                           <Input
-                            value={
-                              Array.isArray(editingQuestion.show_if.value)
-                                ? editingQuestion.show_if.value.join(', ')
-                                : editingQuestion.show_if.value
-                            }
-                            onChange={(e) =>
-                              handleQuestionChange('show_if', {
-                                ...editingQuestion.show_if!,
-                                value: e.target.value,
-                              })
-                            }
+                            value={Array.isArray(editingQuestion.show_if.value) ? editingQuestion.show_if.value.join(', ') : editingQuestion.show_if.value}
+                            onChange={(e) => handleQuestionChange('show_if', { ...editingQuestion.show_if!, value: e.target.value })}
                             placeholder="Expected answer (or leave empty for any answer)"
                           />
                         );
@@ -584,13 +532,8 @@ export function QuestionBuilder({ questions, onChange }: QuestionBuilderProps) {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveQuestion}
-              disabled={!editingQuestion?.label.trim()}
-            >
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveQuestion} disabled={!editingQuestion?.label.trim()}>
               {isNewQuestion ? 'Add Question' : 'Save Changes'}
             </Button>
           </DialogFooter>

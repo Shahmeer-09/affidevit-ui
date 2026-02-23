@@ -416,10 +416,25 @@ export interface PolicyGenerationResult {
   analysis_notes: string;
   scenario_mapping?: Record<string, string>; // Maps scenario keys to descriptions
   identified_scenarios?: string[]; // List of detected scenarios
+  scenario_branches?: Record<string, {
+    description: string;
+    template_sections: string[];
+    key_fields: string[];
+  }>; // Branch info per scenario
+  scenario_branches_stored?: number;
   saved?: boolean;
   error?: string;
   save_error?: string;
   validation_details?: string | Record<string, unknown>;
+  new_fields_added?: number;
+  auto_mapped_placeholders?: number;
+  scenarios_added?: number;
+  config_validation?: {
+    valid: boolean;
+    errors: { type: string; placeholder: string; message: string }[];
+    warnings: { type: string; question_id: string; label: string; message: string }[];
+    info: { total_placeholders: number; mapped: number; auto_computed: number; unmapped: number; orphaned: number };
+  };
 }
 
 export interface PolicyGenerationTaskResponse {
@@ -428,11 +443,125 @@ export interface PolicyGenerationTaskResponse {
   message: string;
 }
 
+export interface RefineTemplateResponse {
+  success: boolean;
+  refined_template?: string;
+  new_fields?: string[];
+  new_fields_meta?: { id: string; label: string; help_text: string }[];
+  examples_used?: number;
+  error?: string;
+}
+
+export interface RefineInstructionResponse {
+  success: boolean;
+  refined_instruction?: string;
+  error?: string;
+}
+
 export interface PolicyTaskStatusResponse {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   result?: PolicyGenerationResult;
   error?: string;
   message?: string;
+}
+
+// Placeholder Mapping types (Template-First Intake Builder)
+export interface PlaceholderAuditEntry {
+  placeholder: string;
+  status: 'mapped' | 'unmapped' | 'auto';
+  mapped_question_id: string | null;
+  question_label: string | null;
+  question_type: string | null;
+  note: string | null;
+}
+
+export interface OrphanedQuestion {
+  question_id: string;
+  question_label: string;
+  question_type: string;
+  note: string;
+}
+
+export interface PlaceholderAuditResponse {
+  affidavit_type_id: number;
+  affidavit_type_name: string;
+  total_placeholders: number;
+  summary: {
+    mapped: number;
+    unmapped: number;
+    auto_computed: number;
+    orphaned_questions: number;
+  };
+  entries: PlaceholderAuditEntry[];
+  orphaned_questions: OrphanedQuestion[];
+  placeholder_mapping: Record<string, string>;
+  questions: { id: string; label: string; type: string }[];
+  created_questions?: string[];
+}
+
+export interface UpdatePlaceholderMappingRequest {
+  placeholder_mapping: Record<string, string>;
+  auto_create_questions?: string[];
+}
+
+export interface TemplatePreviewResponse {
+  filled_html: string;
+  remaining_placeholders: string[];
+  total_placeholders: number;
+  filled_count: number;
+}
+
+export interface AIDraftPreviewResponse {
+  draft_html: string;
+  warnings: string[];
+  model_used: string;
+  elapsed_time: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+// Field suggestions and insertion types
+export interface FieldSuggestion {
+  id: string;
+  label: string;
+  type: string;
+  help_text: string;
+  category: 'universal' | 'common' | 'ai_suggested';
+  confidence?: number;
+  reason?: string;
+  field_id?: string;
+}
+
+export interface FieldSuggestionsResponse {
+  ai_suggestions: FieldSuggestion[];
+  unused_universal_fields: FieldSuggestion[];
+  unused_common_fields: FieldSuggestion[];
+  existing_fields: Array<{ id: string; label: string; type: string }>;
+}
+
+export interface InsertFieldRequest {
+  mode: 'replace' | 'insert';
+  field_id: string;
+  field_config: {
+    label?: string;
+    type?: string;
+    required?: boolean;
+    help_text?: string;
+    placeholder?: string;
+    validation?: Record<string, any>;
+  };
+  target_text?: string;
+  insert_position?: number;
+}
+
+export interface InsertFieldResponse {
+  success: boolean;
+  field_id: string;
+  placeholder: string;
+  question: IntakeQuestion;
+  template_updated: boolean;
+  mapping_updated: boolean;
 }
 
 // Disallowed phrases types
@@ -451,6 +580,35 @@ export interface AIBaseInstruction {
   updated_at: string;
   updated_by: number | null;
   updated_by_name: string | null;
+}
+
+// Config validation types
+export interface ConfigValidationError {
+  type: 'unmapped_placeholder';
+  placeholder: string;
+  message: string;
+}
+
+export interface ConfigValidationWarning {
+  type: 'orphaned_question';
+  question_id: string;
+  label: string;
+  message: string;
+}
+
+export interface ConfigValidationResponse {
+  valid: boolean;
+  errors: ConfigValidationError[];
+  warnings: ConfigValidationWarning[];
+  info: {
+    total_placeholders: number;
+    mapped: number;
+    auto_computed: number;
+    unmapped: number;
+    orphaned: number;
+  };
+  affidavit_type_id: number;
+  affidavit_type_name: string;
 }
 
 // Request types
@@ -647,6 +805,24 @@ export const adminApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [{ type: 'AffidavitType', id }],
     }),
 
+    // AI template refinement — make static clauses dynamic via {{placeholders}}
+    refineTemplate: builder.mutation<RefineTemplateResponse, { id: number; data: { instruction: string; current_template: string } }>({  
+      query: ({ id, data }) => ({
+        url: `/admin/types/${id}/refine-template/`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    // AI prompt refinement — improve rough user instructions into clear prompts
+    refineInstruction: builder.mutation<RefineInstructionResponse, { id: number; data: { raw_instruction: string; current_template: string } }>({
+      query: ({ id, data }) => ({
+        url: `/admin/types/${id}/refine-instruction/`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
     // Generate policy from uploaded documents using AI (async)
     generatePolicy: builder.mutation<PolicyGenerationTaskResponse, { id: number; data: PolicyGenerationRequest }>({
       query: ({ id, data }) => ({
@@ -721,6 +897,75 @@ export const adminApi = baseApi.injectEndpoints({
         body: { validation_rules: rules },
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // =========================================================================
+    // Config Validation (template ↔ intake_schema completeness)
+    // =========================================================================
+
+    validateAffidavitConfig: builder.query<ConfigValidationResponse, number>({
+      query: (id) => `/admin/affidavit-types/${id}/validate-config/`,
+      providesTags: (_result, _error, id) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // =========================================================================
+    // Placeholder Mapping (Template-First Intake Builder)
+    // =========================================================================
+
+    // Get placeholder audit for an affidavit type
+    getPlaceholderAudit: builder.query<PlaceholderAuditResponse, number>({
+      query: (id) => `/admin/affidavit-types/${id}/placeholder-mapping/`,
+      providesTags: (_result, _error, id) => [{ type: 'AffidavitType', id }],
+    }),
+
+    // Update placeholder mapping (and optionally auto-create questions)
+    updatePlaceholderMapping: builder.mutation<PlaceholderAuditResponse, { id: number; data: UpdatePlaceholderMappingRequest }>({
+      query: ({ id, data }) => ({
+        url: `/admin/affidavit-types/${id}/placeholder-mapping/`,
+        method: 'PUT',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'AffidavitType', id },
+      ],
+    }),
+
+    // Live preview: fill template with sample answers (deterministic)
+    previewTemplate: builder.mutation<TemplatePreviewResponse, { id: number; sample_answers: Record<string, string> }>({
+      query: ({ id, sample_answers }) => ({
+        url: `/admin/affidavit-types/${id}/template-preview/`,
+        method: 'POST',
+        body: { sample_answers },
+      }),
+    }),
+
+    // AI draft preview: run full draft_affidavit flow with sample answers
+    previewAIDraft: builder.mutation<AIDraftPreviewResponse, { id: number; sample_answers: Record<string, string> }>({
+      query: ({ id, sample_answers }) => ({
+        url: `/admin/affidavit-types/${id}/ai-draft-preview/`,
+        method: 'POST',
+        body: { sample_answers },
+      }),
+    }),
+
+    // Field suggestions: get smart field recommendations
+    getFieldSuggestions: builder.query<FieldSuggestionsResponse, number>({
+      query: (id) => `/admin/affidavit-types/${id}/field-suggestions/`,
+      providesTags: (_result, _error, id) => [
+        { type: 'AffidavitType', id },
+      ],
+    }),
+
+    // Insert field: atomically add placeholder to template + create question + update mapping
+    insertField: builder.mutation<InsertFieldResponse, { id: number; data: InsertFieldRequest }>({
+      query: ({ id, data }) => ({
+        url: `/admin/affidavit-types/${id}/insert-field/`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'AffidavitType', id },
+      ],
     }),
 
     // =========================================================================
@@ -1045,6 +1290,18 @@ export const adminApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['SiteSettings'],
     }),
+
+    // Manually generate/refresh availability slots for a commissioner (superuser only)
+    generateCommissionerSlots: builder.mutation<
+      { success: boolean; message: string; slots_created: number; commissioner_id: number },
+      { id: number; days?: number }
+    >({
+      query: ({ id, days = 14 }) => ({
+        url: `/admin/commissioners/${id}/generate-slots/`,
+        method: 'POST',
+        body: { days },
+      }),
+    }),
   }),
 });
 
@@ -1072,6 +1329,8 @@ export const {
   useUploadTemplateDocumentsMutation,
   useGetTemplateDocumentsQuery,
   useDeleteTemplateDocumentMutation,
+  useRefineTemplateMutation,
+  useRefineInstructionMutation,
   useGeneratePolicyMutation,
   useGetPolicyTaskStatusQuery,
   useGetDisallowedPhrasesQuery,
@@ -1080,6 +1339,16 @@ export const {
   // Validation Rules
   useGetValidationRulesQuery,
   useUpdateValidationRulesMutation,
+  // Config Validation
+  useValidateAffidavitConfigQuery,
+  // Placeholder Mapping
+  useGetPlaceholderAuditQuery,
+  useUpdatePlaceholderMappingMutation,
+  usePreviewTemplateMutation,
+  usePreviewAIDraftMutation,
+  // Field Suggestions & Insertion
+  useGetFieldSuggestionsQuery,
+  useInsertFieldMutation,
   // AI Base Instruction
   useGetAIBaseInstructionQuery,
   useUpdateAIBaseInstructionMutation,
@@ -1114,4 +1383,6 @@ export const {
   // Site Settings
   useGetSiteSettingsQuery,
   useUpdateSiteSettingsMutation,
+  // Commissioner Slots (superuser fallback)
+  useGenerateCommissionerSlotsMutation,
 } = adminApi;

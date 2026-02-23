@@ -11,15 +11,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
 import { ROUTES } from '@/lib/constants';
 import { Eye, EyeOff, Loader2, Check, Briefcase } from 'lucide-react';
+import type { RegisterResponse } from '@/store/api/authApi';
 
 const registerSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
-  phone: z.string().min(1, 'Phone number is required').regex(
-    /^(\+?1[-.]?)?868[-.]?\d{3}[-.]?\d{4}$/,
-    'Please enter a valid Trinidad and Tobago phone number (e.g., 868-123-4567)'
-  ),
+  phone: z.string().min(1, 'Phone number is required'),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -59,7 +57,7 @@ export function RegisterPage() {
   const onSubmit = async (data: RegisterFormData) => {
     setError(null);
     try {
-      await registerUser({
+      const result: RegisterResponse = await registerUser({
         email: data.email,
         password: data.password,
         password_confirm: data.password_confirm,
@@ -67,8 +65,17 @@ export function RegisterPage() {
         last_name: data.last_name,
         phone: data.phone,
       });
-      
-      // Registration successful - user is logged in automatically
+
+      // If backend sent OTP, redirect to email verification page
+      if (result?.otp_sent && result?.user_id) {
+        navigate(ROUTES.VERIFY_OTP, {
+          replace: true,
+          state: { user_id: result.user_id, email: data.email },
+        });
+        return;
+      }
+
+      // Registration successful - user is logged in automatically (no OTP)
       navigate(ROUTES.MY_REQUESTS, { replace: true });
     } catch (err: any) {
       // Handle field-specific validation errors from backend
@@ -150,7 +157,7 @@ export function RegisterPage() {
           <Input
             id="phone"
             type="tel"
-            placeholder="868-123-4567"
+            placeholder="e.g. +923136918598"
             autoComplete="tel"
             {...register('phone')}
           />

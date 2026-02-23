@@ -133,9 +133,18 @@ export function CommissionerRequestPage() {
     if (!request) return;
     
     try {
-      await completeRequest({ request_id: request.id }).unwrap();
+      const result = await completeRequest({ request_id: request.id }).unwrap();
       setStampComplete(true);
-      toast.success('Notarization complete! Stamp recorded.');
+      
+      // Show payout message if available
+      if (result.payout_message) {
+        toast.success(result.payout_message, {
+          duration: 5000,
+          description: 'Notarization complete! Stamp recorded.',
+        });
+      } else {
+        toast.success('Notarization complete! Stamp recorded.');
+      }
     } catch (err: any) {
       toast.error(err?.data?.error || 'Failed to mark as complete');
     }

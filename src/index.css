@@ -249,21 +249,24 @@
 }
 
 .tiptap ul,
-.document-preview ul {
+.document-preview ul,
+.prose ul {
   list-style-type: disc;
   padding-left: 1.5rem;
   margin: 1em 0;
 }
 
 .tiptap ol,
-.document-preview ol {
+.document-preview ol,
+.prose ol {
   list-style-type: decimal;
   padding-left: 1.5rem;
   margin: 1em 0;
 }
 
 .tiptap li,
-.document-preview li {
+.document-preview li,
+.prose li {
   margin: 0.5em 0;
 }
 

@@ -11,7 +11,6 @@ import {
   useGetRequestQuery,
   useGetRequestStatusQuery,
   useSubmitClarificationMutation,
-  useMarkRequestPaidMutation,
   // useSelectCommissionerMutation,
 } from '@/store/api/userApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
@@ -24,7 +23,6 @@ import {
   // Eye,
   MessageSquare,
   CheckCircle,
-  CreditCard,
   Copy,
   Check,
   User,
@@ -66,11 +64,12 @@ export function RequestStatusPage() {
   // Normalize status to uppercase for comparisons
   const normalizedStatus = request?.status?.toUpperCase();
   
-  // Polling for status when processing
-  const shouldPoll = normalizedStatus === 'SUBMITTED' || normalizedStatus === 'PROCESSING';
+  // Poll when AI is processing OR when awaiting reviewer decision.
+  // This ensures the UI updates live when a reviewer approves/rejects.
+  const shouldPoll = ['SUBMITTED', 'PROCESSING', 'NEEDS_REVIEW'].includes(normalizedStatus || '');
   const { data: statusData } = useGetRequestStatusQuery(Number(id), {
     skip: !id || !shouldPoll,
-    pollingInterval: shouldPoll ? 2000 : 0,
+    pollingInterval: shouldPoll ? 3000 : 0,
   });
 
   // Console logging for AI processing
@@ -100,7 +99,6 @@ export function RequestStatusPage() {
 
   // Mutations
   const [submitClarification, { isLoading: isSubmittingClarification }] = useSubmitClarificationMutation();
-  const [markPaid, { isLoading: isMarkingPaid }] = useMarkRequestPaidMutation();
   // const [selectCommissioner, { isLoading: isWithdrawing }] = useSelectCommissionerMutation();
 
   // Refetch when status changes from processing
@@ -167,23 +165,6 @@ export function RequestStatusPage() {
       });
     }
   }, [id, clarificationResponse, submitClarification, refetch]);
-
-  // Handle payment
-  const handleMarkPaid = useCallback(async () => {
-    if (!id) return;
-    
-    try {
-      await markPaid(Number(id)).unwrap();
-      toast.success('Payment Confirmed', {
-        description: 'Payment has been marked as complete. You can now download your document.',
-      });
-      refetch();
-    } catch {
-      toast.error('Payment Failed', {
-        description: 'Failed to process payment. Please try again.',
-      });
-    }
-  }, [id, markPaid, refetch]);
 
   // Handle PDF download
   const handleDownloadPDF = useCallback(async () => {
@@ -286,13 +267,15 @@ export function RequestStatusPage() {
     }
 
     if (normalizedStatus === 'DRAFT_READY') {
-      items.push({ label: 'Payment & Scheduling', status: 'current' });
-      items.push({ label: 'Under Review', status: 'upcoming' });
+      items.push({ label: 'Select Commissioner & Schedule', status: 'current' });
       items.push({ label: 'Approved', status: 'upcoming' });
     }
 
     if (normalizedStatus === 'NEEDS_REVIEW') {
-      items.push({ label: 'Payment & Scheduling', status: 'completed' });
+      // Only show "Payment & Scheduling" as completed if there's an appointment booked
+      if (request.appointment_date) {
+        items.push({ label: 'Payment & Scheduling', status: 'completed' });
+      }
       items.push({ label: 'Under Review', description: 'A reviewer is checking your document', status: 'current' });
       items.push({ label: 'Approved', status: 'upcoming' });
       items.push({ label: 'Ready for Notarization', status: 'upcoming' });
@@ -316,32 +299,16 @@ export function RequestStatusPage() {
   const canDownload = ['APPROVED', 'COMPLETED'].includes(normalizedStatus || '');
   const isProcessing = normalizedStatus === 'PROCESSING' || normalizedStatus === 'SUBMITTED';
   const isDraftReady = normalizedStatus === 'DRAFT_READY';
+  const isApproved = normalizedStatus === 'APPROVED';
   const needsClarification = normalizedStatus === 'NEEDS_CLARIFICATION';
   const needsReview = normalizedStatus === 'NEEDS_REVIEW';
+  const appointmentStatus = request?.appointment_slot?.appointment_status;
+  const commissionerConfirmed = appointmentStatus === 'accepted';
+  const canShowCommissionerSelection = (isDraftReady || isApproved) && !commissionerConfirmed;
 
-  const handleScheduleAction = async () => {
+  const handleScheduleAction = () => {
     if (!id) return;
-    
-    // If not paid, pay first
-    if (!request?.is_paid) {
-        try {
-            await markPaid(Number(id)).unwrap();
-            toast.success('Payment Successful', {
-                description: 'You can now schedule your appointment.',
-            });
-            // Refetch to update status/payment
-            await refetch();
-            // Then navigate
-            navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', id));
-        } catch {
-            toast.error('Payment Failed', {
-                description: 'Please try again.',
-            });
-        }
-    } else {
-        // Already paid, just navigate
-        navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', id));
-    }
+    navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', id));
   };
 
   return (
@@ -414,6 +381,22 @@ export function RequestStatusPage() {
             </Card>
           )}
 
+          {/* Needs Review - In reviewer queue, no appointment yet */}
+          {needsReview && !request.appointment_date && (
+            <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+              <CardContent className="py-8 text-center">
+                <Clock className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2 text-blue-800 dark:text-blue-200">Under Professional Review</h2>
+                <p className="text-muted-foreground mb-4 max-w-lg mx-auto">
+                  Your affidavit has been queued for review by a legal professional. This usually takes <strong>24–48 hours</strong>.
+                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/40 p-3 rounded-md inline-block">
+                  You will be notified once the review is complete and your document is ready to proceed to commissioning.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Needs Review - Appointment Booked Banner */}
           {needsReview && request.appointment_date && (
             <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
@@ -437,25 +420,15 @@ export function RequestStatusPage() {
                 <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-400 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold mb-2 text-green-800 dark:text-green-200">Affidavit Draft Ready!</h2>
                 <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
-                  Your affidavit has been generated successfully. Please proceed to payment and schedule your notarization appointment.
+                  Your affidavit has been generated successfully. Select a commissioner to schedule your notarization appointment.
                 </p>
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   onClick={handleScheduleAction}
-                  disabled={isMarkingPaid}
                   className="w-full sm:w-auto"
                 >
-                  {isMarkingPaid ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      Processing Payment...
-                    </>
-                  ) : (
-                    <>
-                      <Calendar className="h-5 w-5 mr-2" />
-                      {!request.is_paid ? 'Pay & Schedule Notarization' : 'Schedule Notarization'}
-                    </>
-                  )}
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Select Commissioner
                 </Button>
               </CardContent>
             </Card>
@@ -532,43 +505,40 @@ export function RequestStatusPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Commissioner Selection */}
-              {/* Show for APPROVED (Locked) */}
-              {normalizedStatus === 'APPROVED' && (
-                <div className="space-y-2">
-                  <Label>Commissioner</Label>
-                  {/* ... Locked UI ... */}
-                  <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
-                      <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
-                      <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
-                      <p className="text-xs text-muted-foreground">
-                        Commissioner selection cannot be changed after approval.
-                      </p>
-                  </div>
-                  {request.commissioner && (
-                    <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-                        <div className="flex items-center gap-3">
-                          {/* Commissioner Image */}
-                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <User className="h-5 w-5 text-primary" />
-                            </div>
-                          <div>
-                            <p className="font-medium text-green-700 dark:text-green-300">
-                              {request.commissioner.first_name} {request.commissioner.last_name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Assigned Commissioner
-                            </p>
-                          </div>
-                        </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Show for DRAFT_READY or NEEDS_REVIEW (Active Selection) */}
-              {(isDraftReady || needsReview) && (
+              {/* Show for DRAFT_READY and APPROVED until commissioner confirms */}
+              {canShowCommissionerSelection && (
                  <div className="space-y-2">
                   <Label>Commissioner Appointment</Label>
+                  
+                  {/* Show alert if appointment was rejected/cancelled by commissioner */}
+                  {request.appointment_slot?.appointment_status === 'rejected' && (
+                    <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30 mb-2">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
+                        <div>
+                          <p className="font-medium text-destructive text-sm">Appointment Declined</p>
+                          <p className="text-xs text-muted-foreground">
+                            The commissioner declined your appointment. Please select a new time slot.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {request.appointment_slot?.appointment_status === 'cancelled_by_commissioner' && (
+                    <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/30 mb-2">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-orange-600 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-orange-600 text-sm">Appointment Cancelled</p>
+                          <p className="text-xs text-muted-foreground">
+                            The commissioner cancelled your appointment. Please reschedule.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {request.commissioner ? (
                     <div className="space-y-3">
                       <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -581,10 +551,30 @@ export function RequestStatusPage() {
                               {request.commissioner.first_name} {request.commissioner.last_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {needsReview ? 'Pending Review' : 'Selected'}
+                              {request.appointment_slot?.appointment_status === 'accepted' 
+                                ? 'Appointment Confirmed' 
+                                : request.appointment_slot?.appointment_status === 'pending'
+                                  ? 'Awaiting Commissioner Response'
+                                  : isApproved ? 'Ready to Schedule' : 'Selected'}
                             </p>
                           </div>
                         </div>
+                        {/* Show appointment time if available */}
+                        {request.appointment_slot?.start_time && (
+                          <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(request.appointment_slot.start_time).toLocaleString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              })}
+                            </p>
+                          </div>
+                        )}
                       </div>
                       
                       <Button
@@ -593,7 +583,7 @@ export function RequestStatusPage() {
                         onClick={() => navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id)))}
                         className="w-full"
                       >
-                        {needsReview ? 'Change Appointment' : 'Select Commissioner'}
+                        {request.appointment_slot?.appointment_status === 'pending' ? 'Change Appointment' : 'Select Commissioner'}
                       </Button>
                     </div>
                   ) : (
@@ -603,47 +593,38 @@ export function RequestStatusPage() {
                       onClick={handleScheduleAction}
                     >
                       <User className="h-4 w-4 mr-2" />
-                      {request.is_paid ? 'Select Commissioner' : 'Pay & Select Commissioner'}
+                      Select Commissioner
                     </Button>
                   )}
                 </div>
               )}
 
-              {/* Payment Section - show only for DRAFT_READY when not paid */}
-              {isDraftReady && !request.is_paid && (
+              {/* Lock commissioner selection only after commissioner accepts appointment */}
+              {commissionerConfirmed && (
                 <div className="space-y-2">
-                  <Separator />
-                  <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CreditCard className="h-5 w-5 text-primary" />
-                      <p className="font-semibold text-primary">Payment Required</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Complete payment to proceed with your request.
-                    </p>
-                    <div className="p-3 bg-white dark:bg-gray-900 rounded border mb-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm">Affidavit Preparation Fee</span>
-                        <span className="font-bold">$50.00 TTD</span>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="default" 
-                      className="w-full"
-                      onClick={handleMarkPaid}
-                      disabled={isMarkingPaid}
-                    >
-                      {isMarkingPaid ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <CreditCard className="h-4 w-4 mr-2" />
-                      )}
-                      {isMarkingPaid ? 'Processing...' : 'Pay Now'}
-                    </Button>
-                    <p className="text-xs text-muted-foreground text-center mt-2">
-                      Secure payment processing
+                  <Label>Commissioner</Label>
+                  <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
+                    <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
+                    <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
+                    <p className="text-xs text-muted-foreground">
+                      Commissioner selection is locked after appointment confirmation.
                     </p>
                   </div>
+                  {request.commissioner && (
+                    <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-green-700 dark:text-green-300">
+                            {request.commissioner.first_name} {request.commissioner.last_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Appointment Confirmed</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

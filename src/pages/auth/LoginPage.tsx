@@ -30,7 +30,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
-  const from = (location.state as { from?: string })?.from;
+  const locationState = location.state as { from?: string; message?: string } | null;
+  const from = locationState?.from;
+  const successMessage = locationState?.message ?? null;
 
   const {
     register,
@@ -105,6 +107,11 @@ export function LoginPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {successMessage && (
+          <Alert className="border-green-500 bg-green-50 text-green-800">
+            <AlertDescription>{successMessage}</AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

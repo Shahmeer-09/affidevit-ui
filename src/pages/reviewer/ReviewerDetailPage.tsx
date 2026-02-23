@@ -25,6 +25,7 @@ import {
   useRejectRequestMutation,
   useSubmitFeedbackMutation,
 } from '@/store/api/reviewerApi';
+import type { AutoFeedbackPair } from '@/store/api/reviewerApi';
 import { ROUTES, API_BASE_URL } from '@/lib/constants';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -46,16 +47,6 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
-// Issue types for tracking edits
-const ISSUE_TYPES = [
-  { value: 'grammar', label: 'Grammar/Spelling' },
-  { value: 'factual', label: 'Factual Error' },
-  { value: 'formatting', label: 'Formatting Issue' },
-  { value: 'legal', label: 'Legal Language' },
-  { value: 'missing_info', label: 'Missing Information' },
-  { value: 'other', label: 'Other' },
-];
-
 // Feedback categories for reviewer feedback
 const FEEDBACK_CATEGORIES = [
   { value: 'grammar', label: 'Grammar/Spelling' },
@@ -67,6 +58,53 @@ const FEEDBACK_CATEGORIES = [
   { value: 'other', label: 'Other' },
 ];
 
+// Feedback target options
+const FEEDBACK_TARGETS = [
+  { value: 'drafter', label: 'AI Drafter', description: 'Improve future drafts' },
+  { value: 'policy', label: 'Policy/Template', description: 'Improve templates' },
+  { value: 'both', label: 'Both', description: 'Improve drafts & templates' },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Client-side diff: extract changed paragraph pairs between two HTML strings.
+// Used to auto-populate the classify-changes dialog without a round-trip.
+// ---------------------------------------------------------------------------
+function extractParagraphDiffs(
+  originalHtml: string,
+  revisedHtml: string,
+): { original: string; revised: string }[] {
+  const stripHtml = (html: string) =>
+    html
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;|&amp;|&lt;|&gt;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const toChunks = (html: string): string[] =>
+    html
+      .split(/<\/?(?:p|li|tr|div|ol|ul|h[1-6])[^>]*>/i)
+      .map(stripHtml)
+      .filter((c) => c.length > 15);
+
+  const origChunks = toChunks(originalHtml);
+  const revChunks = toChunks(revisedHtml);
+
+  const revSet = new Set(revChunks);
+  const origSet = new Set(origChunks);
+
+  // Chunks removed from original (changed)
+  const removed = origChunks.filter((c) => !revSet.has(c));
+  // Chunks added in revised (the replacements)
+  const added = revChunks.filter((c) => !origSet.has(c));
+
+  const pairs: { original: string; revised: string }[] = [];
+  const count = Math.min(removed.length, added.length, 10);
+  for (let i = 0; i < count; i++) {
+    pairs.push({ original: removed[i], revised: added[i] });
+  }
+  return pairs;
+}
+
 export function ReviewerDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -75,16 +113,23 @@ export function ReviewerDetailPage() {
   // Local state
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
-  const [issueType, setIssueType] = useState('other');
-  const [issueDescription, setIssueDescription] = useState('');
+
   const [rejectReason, setRejectReason] = useState('');
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [checkedQaItems, setCheckedQaItems] = useState<number[]>([]);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [issuesDialogOpen, setIssuesDialogOpen] = useState(false);
+  // Classify-changes dialog (auto-detected diff from reviewer edits)
+  const [classifyDialogOpen, setClassifyDialogOpen] = useState(false);
+  const [detectedChanges, setDetectedChanges] = useState<{ original: string; revised: string }[]>([]);
+  const [changeTargets, setChangeTargets] = useState<Record<number, 'drafter' | 'policy' | 'both' | 'skip'>>({});
   // Feedback form state
   const [feedbackCategory, setFeedbackCategory] = useState('other');
   const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackTarget, setFeedbackTarget] = useState<'drafter' | 'policy' | 'both'>('drafter');
+  const [feedbackEntries, setFeedbackEntries] = useState<
+    { category: string; message: string; feedback_target: 'drafter' | 'policy' | 'both' }[]
+  >([]);
 
   // Fetch request details
   const {
@@ -140,15 +185,16 @@ export function ReviewerDetailPage() {
     );
   };
 
-  const handleApprove = async () => {
+  const handleApprove = async (autoPairs?: AutoFeedbackPair[]) => {
     if (!request) return;
 
     try {
       await approveRequest({
         request_id: request.id,
         final_text: hasEdits ? editedText : undefined,
-        issue_type: hasEdits ? issueType : undefined,
-        issue_description: hasEdits ? issueDescription : undefined,
+
+        feedback_entries: feedbackEntries.length > 0 ? feedbackEntries : undefined,
+        auto_feedback_pairs: autoPairs && autoPairs.length > 0 ? autoPairs : undefined,
       }).unwrap();
 
       toast({
@@ -169,6 +215,37 @@ export function ReviewerDetailPage() {
         variant: 'destructive',
       });
     }
+  };
+
+  // Intercept Approve click — open classify dialog if reviewer made edits
+  const handleApproveClick = () => {
+    if (!request) return;
+    if (hasEdits) {
+      const changes = extractParagraphDiffs(request.draft_text || '', editedText);
+      if (changes.length > 0) {
+        setDetectedChanges(changes);
+        // Default all targets to 'drafter'
+        setChangeTargets(
+          Object.fromEntries(changes.map((_, i) => [i, 'drafter' as const]))
+        );
+        setClassifyDialogOpen(true);
+        return;
+      }
+    }
+    // No meaningful diffs or no edits — approve directly
+    handleApprove();
+  };
+
+  const handleApproveWithClassification = async () => {
+    const autoPairs: AutoFeedbackPair[] = detectedChanges
+      .map((c, i) => ({
+        original_snippet: c.original,
+        revised_snippet: c.revised,
+        feedback_target: changeTargets[i] ?? 'drafter',
+      }))
+      .filter((p) => p.feedback_target !== 'skip');
+    setClassifyDialogOpen(false);
+    await handleApprove(autoPairs);
   };
 
   const handleReject = async () => {
@@ -219,7 +296,14 @@ export function ReviewerDetailPage() {
         request_id: request.id,
         category: feedbackCategory,
         message: feedbackMessage.trim(),
+        feedback_target: feedbackTarget,
       }).unwrap();
+
+      // Also queue this entry for the approve payload
+      setFeedbackEntries((prev) => [
+        ...prev,
+        { category: feedbackCategory, message: feedbackMessage.trim(), feedback_target: feedbackTarget },
+      ]);
 
       toast({
         title: 'Feedback Submitted',
@@ -229,6 +313,7 @@ export function ReviewerDetailPage() {
       // Reset form
       setFeedbackCategory('other');
       setFeedbackMessage('');
+      setFeedbackTarget('drafter');
     } catch (error) {
       toast({
         title: 'Error',
@@ -469,42 +554,7 @@ export function ReviewerDetailPage() {
                         onChange={(html) => setEditedText(html)}
                         className="min-h-[500px]"
                       />
-                      {hasEdits && (
-                        <Card className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
-                          <CardContent className="py-4 space-y-4">
-                            <div className="flex items-center gap-2">
-                              <Save className="h-4 w-4 text-blue-500" />
-                              <span className="text-sm font-medium">Document has been edited</span>
-                            </div>
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Issue Type</Label>
-                                <Select value={issueType} onValueChange={setIssueType}>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {ISSUE_TYPES.map((type) => (
-                                      <SelectItem key={type.value} value={type.value}>
-                                        {type.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Issue Description (optional)</Label>
-                                <Textarea
-                                  value={issueDescription}
-                                  onChange={(e) => setIssueDescription(e.target.value)}
-                                  placeholder="Describe the issue..."
-                                  rows={2}
-                                />
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
+
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -671,7 +721,7 @@ export function ReviewerDetailPage() {
                 className="w-full"
                 size="lg"
                 disabled={!canApprove || isApproving}
-                onClick={handleApprove}
+                onClick={handleApproveClick}
               >
                 {isApproving ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -764,12 +814,12 @@ export function ReviewerDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Minimal Feedback Form */}
+          {/* AI Learning Feedback — Additional Notes (Optional) */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Minimal Feedback</CardTitle>
+              <CardTitle className="text-sm">Additional Notes</CardTitle>
               <CardDescription className="text-xs">
-                Help improve AI: 1–2 sentences, 10–300 chars
+                Optionally add a short note about this document. Edits you make are auto-detected on approve.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -783,6 +833,21 @@ export function ReviewerDetailPage() {
                     {FEEDBACK_CATEGORIES.map((cat) => (
                       <SelectItem key={cat.value} value={cat.value} className="text-xs">
                         {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Improve</Label>
+                <Select value={feedbackTarget} onValueChange={(v) => setFeedbackTarget(v as 'drafter' | 'policy' | 'both')}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select target" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FEEDBACK_TARGETS.map((t) => (
+                      <SelectItem key={t.value} value={t.value} className="text-xs">
+                        {t.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -816,10 +881,99 @@ export function ReviewerDetailPage() {
                 )}
                 Submit Feedback
               </Button>
+              {feedbackEntries.length > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Queued feedback ({feedbackEntries.length}):
+                  </p>
+                  <div className="space-y-1">
+                    {feedbackEntries.map((entry, idx) => (
+                      <div key={idx} className="flex items-center gap-1 text-xs">
+                        <Badge variant="outline" className="text-[10px] px-1">
+                          {entry.feedback_target}
+                        </Badge>
+                        <span className="truncate">{entry.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Classify Changes Dialog — shown when reviewer has edits on approve */}
+      <Dialog open={classifyDialogOpen} onOpenChange={setClassifyDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Classify Your Changes</DialogTitle>
+            <DialogDescription>
+              {detectedChanges.length} change{detectedChanges.length !== 1 ? 's' : ''} detected.
+              For each one, choose which AI system it should help improve — or skip it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {detectedChanges.map((change, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-3">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Change {i + 1} of {detectedChanges.length}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Original (AI)</p>
+                    <p className="text-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded p-2 line-clamp-4">
+                      {change.original}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Your correction</p>
+                    <p className="text-sm bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-2 line-clamp-4">
+                      {change.revised}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">This correction should improve:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['drafter', 'policy', 'both', 'skip'] as const).map((target) => (
+                      <button
+                        key={target}
+                        type="button"
+                        onClick={() => setChangeTargets((prev) => ({ ...prev, [i]: target }))}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          changeTargets[i] === target
+                            ? target === 'skip'
+                              ? 'bg-gray-200 dark:bg-gray-700 border-gray-400 text-gray-700 dark:text-gray-300'
+                              : 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background border-border text-muted-foreground hover:border-primary/50'
+                        }`}
+                      >
+                        {target === 'drafter' ? 'AI Drafter' :
+                         target === 'policy' ? 'Policy/Template' :
+                         target === 'both' ? 'Both' : 'Skip'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setClassifyDialogOpen(false); handleApprove(); }}>
+              Approve without saving feedback
+            </Button>
+            <Button onClick={handleApproveWithClassification} disabled={isApproving}>
+              {isApproving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+              Approve & Save Feedback
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

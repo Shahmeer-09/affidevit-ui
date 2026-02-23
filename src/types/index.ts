@@ -245,6 +245,18 @@ export type RequestStatus =
   | 'rejected'
   | 'completed';
 
+export type AppointmentStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled_by_commissioner' | 'cancelled_by_user';
+
+export interface AppointmentSlot {
+  id: number;
+  commissioner: number;
+  start_time: string;
+  is_booked: boolean;
+  appointment_status?: AppointmentStatus;
+  decision_at?: string;
+  decision_reason?: string;
+}
+
 export interface Request {
   id: number;
   request_code: string;
@@ -258,6 +270,7 @@ export interface Request {
     full_name: string;
     profile_image_url?: string;
   };
+  appointment_slot?: AppointmentSlot;
   answers_json: Record<string, unknown>;
   draft_text?: string;
   draft_json?: Record<string, unknown>;

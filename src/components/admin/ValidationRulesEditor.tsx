@@ -321,6 +321,19 @@ export function ValidationRulesEditor({ affidavitTypeId }: ValidationRulesEditor
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Tips section */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md space-y-2">
+            <div className="text-sm font-semibold text-blue-900 flex items-start gap-2">
+              <span>💡</span>
+              <span>Tips for defining rules:</span>
+            </div>
+            <ul className="text-xs text-blue-800 space-y-1.5 ml-6">
+              <li><strong>Left field gets the error:</strong> For comparisons, validation errors are attached to the <strong>left field</strong>. If both sides share a field, put that field on the left so users know where to fix it.</li>
+              <li><strong>Using AND:</strong> Click <strong>+ Add Comparison</strong> to combine multiple conditions with AND. Example: <code className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-900 font-mono">age ≥ 18 AND duration ≤ 10 years</code></li>
+              <li><strong>Common field example:</strong> If validating "start_date" and "end_date", put <strong>start_date</strong> on the left and <strong>end_date</strong> on the right. If they're the same field on both sides, it still goes to the left field.</li>
+              <li><strong>Field references:</strong> Only fields in the intake schema are available. Ensure the field exists before creating a rule that references it.</li>
+            </ul>
+          </div>
           {rules.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 opacity-40" />

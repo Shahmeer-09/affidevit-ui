@@ -28,12 +28,20 @@ export interface CommissionerScheduleSlot {
   commissioner: number;
   start_time: string;
   is_booked: boolean;
+  appointment_status?: 'pending' | 'accepted' | 'rejected' | 'cancelled_by_commissioner' | 'cancelled_by_user';
+  decision_at?: string;
+  decision_reason?: string;
   request_details?: {
     request_code: string;
     client_name: string;
     affidavit_type: string;
     status: RequestStatus;
   };
+}
+
+export interface SlotDecisionParams {
+  slot_id: number;
+  reason?: string;
 }
 
 export const commissionerApi = baseApi.injectEndpoints({
@@ -72,7 +80,7 @@ export const commissionerApi = baseApi.injectEndpoints({
 
     // Mark request as completed
     completeRequest: builder.mutation<
-      { success: boolean; message: string; stamp: Stamp },
+      { success: boolean; message: string; stamp: Stamp; payout_message?: string },
       CompleteRequestParams
     >({
       query: ({ request_id, notes }) => ({
@@ -120,6 +128,35 @@ export const commissionerApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['PDFPreferences'],
     }),
+
+    // Accept appointment slot
+    acceptSlot: builder.mutation<{ success: boolean; message: string; slot: CommissionerScheduleSlot }, number>({
+      query: (slotId) => ({
+        url: `/slots/${slotId}/accept/`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['CommissionerSlot', 'AssignedRequests'],
+    }),
+
+    // Reject appointment slot
+    rejectSlot: builder.mutation<{ success: boolean; message: string }, SlotDecisionParams>({
+      query: ({ slot_id, reason }) => ({
+        url: `/slots/${slot_id}/reject/`,
+        method: 'POST',
+        body: { reason },
+      }),
+      invalidatesTags: ['CommissionerSlot', 'AssignedRequests'],
+    }),
+
+    // Cancel appointment slot
+    cancelSlot: builder.mutation<{ success: boolean; message: string }, SlotDecisionParams>({
+      query: ({ slot_id, reason }) => ({
+        url: `/slots/${slot_id}/cancel/`,
+        method: 'POST',
+        body: { reason },
+      }),
+      invalidatesTags: ['CommissionerSlot', 'AssignedRequests'],
+    }),
   }),
 });
 
@@ -134,4 +171,7 @@ export const {
   useGetStampsQuery,
   useGetPdfPreferencesQuery,
   useUpdatePdfPreferencesMutation,
+  useAcceptSlotMutation,
+  useRejectSlotMutation,
+  useCancelSlotMutation,
 } = commissionerApi;

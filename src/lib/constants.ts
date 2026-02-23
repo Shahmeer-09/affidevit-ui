@@ -20,11 +20,15 @@ export const ROUTES = {
   REGISTER_COMMISSIONER: '/register/commissioner',
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password/:uid/:token',
+  VERIFY_OTP: '/verify-email',
+  VERIFY_OTP: '/verify-otp',
   
   // User Routes (authenticated)
   MY_REQUESTS: '/my-requests',
   REQUEST_CREATE: '/request/new/:typeId',
   REQUEST_STATUS: '/request/:id',
+  REQUEST_PAYMENT: '/request/:id/payment',
+  REQUEST_THANK_YOU: '/request/:id/thank-you',
   REQUEST_SELECT_COMMISSIONER: '/request/:id/select-commissioner',
   REQUEST_PDF: '/request/:id/pdf',
   PROFILE: '/profile',

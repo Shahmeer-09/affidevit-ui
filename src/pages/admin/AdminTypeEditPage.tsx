@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DashboardHeader, TierBadge } from '@/components/features';
-import { QuestionBuilder, ValidationRulesEditor } from '@/components/admin';
+import { QuestionBuilder, ValidationRulesEditor, PlaceholderMapper, TemplateEditor } from '@/components/admin';
+import { TemplateRefinementPanel } from '@/components/admin/TemplateRefinementPanel';
 import { PolicyGenerator } from '@/components/admin/PolicyGenerator';
 import { DisallowedPhrasesEditor } from '@/components/admin/DisallowedPhrasesEditor';
 import { DecisionTreeEditor } from '@/components/admin/DecisionTreeEditor';
@@ -20,6 +22,7 @@ import {
   useGetAdminAffidavitTypeQuery,
   useCreateAffidavitTypeMutation,
   useUpdateAffidavitTypeMutation,
+  useValidateAffidavitConfigQuery,
   type IntakeQuestion,
 } from '@/store/api/adminApi';
 import {
@@ -34,6 +37,7 @@ import {
   Ban,
   GitBranch,
   ShieldCheck,
+  Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AffidavitTier, DefaultMode } from '@/types';
@@ -91,14 +95,22 @@ export function AdminTypeEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isNew = id === 'new';
+  const { user } = useAuth();
+  const isSuperuser = !!user?.is_superuser;
 
   // API hooks
-  const { data: existingType, isLoading: isLoadingType } = useGetAdminAffidavitTypeQuery(
+  const { data: existingType, isLoading: isLoadingType, refetch } = useGetAdminAffidavitTypeQuery(
     Number(id),
     { skip: isNew }
   );
   const [createType, { isLoading: isCreating }] = useCreateAffidavitTypeMutation();
   const [updateType, { isLoading: isUpdating }] = useUpdateAffidavitTypeMutation();
+
+  // Config validation (template ↔ questions completeness)
+  const { data: configValidation } = useValidateAffidavitConfigQuery(
+    Number(id),
+    { skip: isNew }
+  );
 
   // Initialize form data from existing type or defaults
   const initialFormData = useMemo<FormData>(() => {
@@ -144,8 +156,41 @@ export function AdminTypeEditPage() {
     setHasChanges(true);
   };
 
-  const handleQuestionsChange = (questions: IntakeQuestion[]) => {
-    handleChange('intake_schema', questions);
+  const handleQuestionsChange = (newQuestions: IntakeQuestion[]) => {
+    // Detect removed questions and strip their {{placeholder}} from the template
+    const removedQuestions = formData.intake_schema.filter(
+      (old) => !newQuestions.some((q) => q.id === old.id),
+    );
+
+    let updatedTemplate = formData.template_html;
+    for (const removed of removedQuestions) {
+      const fieldName = removed.field_name || removed.id;
+      const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      updatedTemplate = updatedTemplate.replace(
+        new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'),
+        '',
+      );
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      template_html: updatedTemplate,
+      intake_schema: newQuestions,
+    }));
+    setHasChanges(true);
+  };
+
+  // Called by TemplateEditor when AI generates a new field (local only, no DB write)
+  const handleFieldCreated = (question: IntakeQuestion, updatedTemplate: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      template_html: updatedTemplate,
+      intake_schema: [
+        ...prev.intake_schema,
+        { ...question, order: prev.intake_schema.length + 1 },
+      ],
+    }));
+    setHasChanges(true);
   };
 
   const handleSave = async () => {
@@ -286,8 +331,47 @@ export function AdminTypeEditPage() {
         </div>
       )}
 
+      {/* Config validation warnings (template ↔ questions mismatch) */}
+      {configValidation && !configValidation.valid && (
+        <Alert variant="destructive" className="border-red-300 bg-red-50 dark:bg-red-950">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Template / Questions Mismatch</AlertTitle>
+          <AlertDescription className="space-y-1">
+            {configValidation.errors.map((e, i) => (
+              <p key={i} className="text-sm">
+                <span className="font-mono bg-red-100 dark:bg-red-900 px-1 rounded">
+                  {`{{${e.placeholder}}}`}
+                </span>{' '}
+                has no matching intake question.
+              </p>
+            ))}
+            <p className="text-xs mt-1 text-muted-foreground">
+              Go to the <button className="underline font-medium" onClick={() => setActiveTab('mapping')}>Mapping</button> tab to fix.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {configValidation && configValidation.warnings.length > 0 && (
+        <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-700 dark:text-amber-300">Orphaned Questions</AlertTitle>
+          <AlertDescription className="text-amber-600 dark:text-amber-400 space-y-1">
+            {configValidation.warnings.slice(0, 5).map((w, i) => (
+              <p key={i} className="text-sm">
+                Question <span className="font-medium">"{w.label}"</span> ({w.question_id}) is not
+                used by any template placeholder.
+              </p>
+            ))}
+            {configValidation.warnings.length > 5 && (
+              <p className="text-xs">+ {configValidation.warnings.length - 5} more</p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="basic" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Basic Info</span>
@@ -308,6 +392,10 @@ export function AdminTypeEditPage() {
           <TabsTrigger value="validation" className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
             <span className="hidden sm:inline">Validation</span>
+          </TabsTrigger>
+          <TabsTrigger value="mapping" className="flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Mapping</span>
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
@@ -418,6 +506,7 @@ export function AdminTypeEditPage() {
               <QuestionBuilder
                 questions={formData.intake_schema}
                 onChange={handleQuestionsChange}
+                allowAdd={isSuperuser}
               />
             </CardContent>
           </Card>
@@ -426,64 +515,146 @@ export function AdminTypeEditPage() {
         {/* Templates Tab */}
         <TabsContent value="templates" className="space-y-6">
           {id && id !== 'new' && !isNaN(Number(id)) ? (
-            <PolicyGenerator
-              affidavitTypeId={id}
-              onPolicyGenerated={(policy, questions) => {
-                // Update the policy_json with the generated policy
-                setFormData((prev) => {
-                  // Intelligently merge questions - only add NEW ones
-                  const existingIds = new Set(prev.intake_schema.map(q => q.id?.toLowerCase()));
-                  const existingLabels = new Set(prev.intake_schema.map(q => q.label?.toLowerCase()));
+            <>
+              {/* Template Editor - Direct editing with field insertion */}
+              <TemplateEditor
+                affidavitTypeId={id}
+                initialTemplate={formData.template_html}
+                onFieldCreated={handleFieldCreated}
+                onSave={async (newTemplate) => {
+                  // Update local state
+                  handleChange('template_html', newTemplate);
                   
-                  const newQuestions = questions.filter(q => {
-                    const qId = q.id?.toLowerCase() || '';
-                    const qLabel = q.label?.toLowerCase() || '';
-                    // Only include if both id and label don't already exist
-                    return !existingIds.has(qId) && !existingLabels.has(qLabel);
+                  // Save to backend
+                  try {
+                    await updateType({
+                      id: Number(id),
+                      data: {
+                        ...formData,
+                        template_html: newTemplate,
+                      },
+                    }).unwrap();
+                    
+                    // Refetch to get updated data including auto-generated mappings
+                    refetch();
+                  } catch (error) {
+                    throw error; // Let TemplateEditor handle the error
+                  }
+                }}
+              />
+
+              {/* Template Refinement Panel - Make static clauses dynamic */}
+              <TemplateRefinementPanel
+                affidavitTypeId={id}
+                currentTemplate={formData.template_html || ''}
+                onApplyRefinement={(refined, newFields, newFieldsMeta) => {
+                  setFormData((prev) => {
+                    // Build questions for new fields that don't already exist
+                    const existingIds = new Set(
+                      prev.intake_schema.map((q) => q.id?.toLowerCase())
+                    );
+
+                    // Build a quick lookup from the meta array returned by the AI
+                    const metaMap = new Map(
+                      (newFieldsMeta ?? []).map((m) => [m.id.toLowerCase(), m])
+                    );
+
+                    const newQuestions = newFields
+                      .filter((fieldId) => !existingIds.has(fieldId.toLowerCase()))
+                      .map((fieldId, idx) => {
+                        const meta = metaMap.get(fieldId.toLowerCase());
+                        return {
+                          id: fieldId,
+                          field_name: fieldId,
+                          type: 'text' as const,
+                          label: meta?.label
+                            ? meta.label
+                            : fieldId
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, (c) => c.toUpperCase()),
+                          help_text: meta?.help_text || '',
+                          required: true,
+                          order: prev.intake_schema.length + idx + 1,
+                        };
+                      });
+
+                    return {
+                      ...prev,
+                      template_html: refined,
+                      intake_schema: [...prev.intake_schema, ...newQuestions],
+                    };
+                  });
+                  setHasChanges(true);
+
+                  if (newFields.length > 0) {
+                    toast.success(
+                      `${newFields.length} new question(s) created — review in the Questions tab, then Save.`
+                    );
+                  }
+                }}
+              />
+
+              {/* Policy Generator - AI-driven template generation */}
+              <PolicyGenerator
+                affidavitTypeId={id}
+                existingQuestions={formData.intake_schema}
+                onPolicyGenerated={(policy, questions) => {
+                  // Update the policy_json with the generated policy
+                  setFormData((prev) => {
+                    // Intelligently merge questions - only add NEW ones
+                    const existingIds = new Set(prev.intake_schema.map(q => q.id?.toLowerCase()));
+                    const existingLabels = new Set(prev.intake_schema.map(q => q.label?.toLowerCase()));
+                    
+                    const newQuestions = questions.filter(q => {
+                      const qId = q.id?.toLowerCase() || '';
+                      const qLabel = q.label?.toLowerCase() || '';
+                      // Only include if both id and label don't already exist
+                      return !existingIds.has(qId) && !existingLabels.has(qLabel);
+                    });
+                    
+                    // Assign proper order to new questions
+                    const startOrder = prev.intake_schema.length;
+                    const questionsWithOrder = newQuestions.map((q, idx) => ({
+                      ...q,
+                      order: startOrder + idx + 1,
+                    }));
+                    
+                    return {
+                      ...prev,
+                      // Capture template_html and disallowed_phrases from the policy result
+                      template_html: policy.template_html || prev.template_html,
+                      disallowed_phrases: policy.disallowed_phrases || prev.disallowed_phrases,
+                      policy_json: {
+                        ...prev.policy_json,
+                        ...policy,
+                      },
+                      // Only add truly new questions
+                      intake_schema: questionsWithOrder.length > 0 
+                        ? [...prev.intake_schema, ...questionsWithOrder]
+                        : prev.intake_schema,
+                    };
                   });
                   
-                  // Assign proper order to new questions
-                  const startOrder = prev.intake_schema.length;
-                  const questionsWithOrder = newQuestions.map((q, idx) => ({
-                    ...q,
-                    order: startOrder + idx + 1,
-                  }));
+                  // Show toast about what happened
+                  const existingIds = new Set(formData.intake_schema.map(q => q.id?.toLowerCase()));
+                  const existingLabels = new Set(formData.intake_schema.map(q => q.label?.toLowerCase()));
+                  const newCount = questions.filter(q => 
+                    !existingIds.has(q.id?.toLowerCase() || '') && 
+                    !existingLabels.has(q.label?.toLowerCase() || '')
+                  ).length;
                   
-                  return {
-                    ...prev,
-                    // Capture template_html and disallowed_phrases from the policy result
-                    template_html: policy.template_html || prev.template_html,
-                    disallowed_phrases: policy.disallowed_phrases || prev.disallowed_phrases,
-                    policy_json: {
-                      ...prev.policy_json,
-                      ...policy,
-                    },
-                    // Only add truly new questions
-                    intake_schema: questionsWithOrder.length > 0 
-                      ? [...prev.intake_schema, ...questionsWithOrder]
-                      : prev.intake_schema,
-                  };
-                });
-                
-                // Show toast about what happened
-                const existingIds = new Set(formData.intake_schema.map(q => q.id?.toLowerCase()));
-                const existingLabels = new Set(formData.intake_schema.map(q => q.label?.toLowerCase()));
-                const newCount = questions.filter(q => 
-                  !existingIds.has(q.id?.toLowerCase() || '') && 
-                  !existingLabels.has(q.label?.toLowerCase() || '')
-                ).length;
-                
-                if (newCount > 0) {
-                  toast.info(`Added ${newCount} new question(s). ${questions.length - newCount} already existed. Click "Save Changes" to persist.`);
-                } else if (questions.length > 0) {
-                  toast.info('All detected fields already exist. Click "Save Changes" to persist template updates.');
-                } else {
-                  toast.info('Policy generated. Click "Save Changes" to persist.');
-                }
-                
-                setHasChanges(true);
-              }}
-            />
+                  if (newCount > 0) {
+                    toast.info(`Added ${newCount} new question(s). ${questions.length - newCount} already existed. Click "Save Changes" to persist.`);
+                  } else if (questions.length > 0) {
+                    toast.info('All detected fields already exist. Click "Save Changes" to persist template updates.');
+                  } else {
+                    toast.info('Policy generated. Click "Save Changes" to persist.');
+                  }
+                  
+                  setHasChanges(true);
+                }}
+              />
+            </>
           ) : (
             <Card>
               <CardHeader>
@@ -546,6 +717,44 @@ export function AdminTypeEditPage() {
                   <ShieldCheck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">
                     Please save the affidavit type first before adding validation rules.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Mapping Tab (Template-First Intake Builder) */}
+        <TabsContent value="mapping" className="space-y-6">
+          {id && id !== 'new' && !isNaN(Number(id)) ? (
+            <PlaceholderMapper
+              affidavitTypeId={id}
+              questions={formData.intake_schema}
+              onAddToTemplate={(fieldId) => {
+                const tag = `{{${fieldId}}}`;
+                navigator.clipboard.writeText(tag).then(() => {
+                  setActiveTab('templates');
+                  toast.success(`${tag} copied — click in the template where you want it and press Ctrl+V`);
+                }).catch(() => {
+                  // Fallback if clipboard fails
+                  setActiveTab('templates');
+                  toast.info(`Switch to template and type: ${tag}`);
+                });
+              }}
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Placeholder Mapping</CardTitle>
+                <CardDescription>
+                  Save the affidavit type first to audit placeholder-to-question bindings.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <Link2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    Please save the affidavit type first before configuring placeholder mapping.
                   </p>
                 </div>
               </CardContent>

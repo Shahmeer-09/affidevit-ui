@@ -9,7 +9,13 @@ export interface ReviewerFeedbackLog {
   reviewer: number;
   reviewer_name: string;
   category: string;
+  feedback_target: 'drafter' | 'policy' | 'both';
   message: string;
+  original_snippet: string;
+  revised_snippet: string;
+  summary?: string | null;
+  is_active: boolean;
+  times_seen: number;
   created_at: string;
 }
 
