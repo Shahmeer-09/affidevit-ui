@@ -20,7 +20,6 @@ export const ROUTES = {
   REGISTER_COMMISSIONER: '/register/commissioner',
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password/:uid/:token',
-  VERIFY_OTP: '/verify-email',
   VERIFY_OTP: '/verify-otp',
   
   // User Routes (authenticated)

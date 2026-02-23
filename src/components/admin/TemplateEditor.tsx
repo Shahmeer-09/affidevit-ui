@@ -64,7 +64,7 @@ function stripMarks(html: string): string {
     cleaned = cleaned.replace(/<\/div>/gi, '\n');
     cleaned = cleaned.replace(/<div[^>]*>/gi, '');
     // Remove span and other non-formatting tags EXCEPT the keep list
-    cleaned = cleaned.replace(/<(\/?[a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, tag) =>
+    cleaned = cleaned.replace(/<(\/?[a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (_match, tag) =>
       KEEP_TAGS_RE.test(tag) ? `<${tag}>` : ''
     );
   } else {
@@ -76,7 +76,7 @@ function stripMarks(html: string): string {
     cleaned = cleaned.replace(/<div[^>]*>/gi, '');
     cleaned = cleaned.replace(/<\/li>/gi, '\n');
     // Remove all remaining tags
-    cleaned = cleaned.replace(/<(\/?[a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, tag) =>
+    cleaned = cleaned.replace(/<(\/?[a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (_match, tag) =>
       KEEP_TAGS_RE.test(tag) ? `<${tag}>` : ''
     );
   }

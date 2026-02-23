@@ -9,7 +9,7 @@ import type {
   FrictionReport,
   PaginatedResponse,
 } from '@/types';
-import type { ReviewerFeedbackQueryParams } from './types/admin.types';
+import type { ReviewerFeedbackQueryParams, ReviewerFeedbackLog } from './types/admin.types';
 
 // Response types
 export interface ConfidenceDashboard {
@@ -106,16 +106,7 @@ export interface PaymentLog {
   created_at: string;
 }
 
-export interface ReviewerFeedbackLog {
-  id: number;
-  request: number;
-  request_code: string;
-  reviewer: number;
-  reviewer_name: string;
-  category: string;
-  message: string;
-  created_at: string;
-}
+// ReviewerFeedbackLog is imported from './types/admin.types'
 
 export interface MarkAsPaidRequest {
   payment_reference?: string;

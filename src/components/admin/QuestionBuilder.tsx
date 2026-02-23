@@ -66,7 +66,7 @@ const defaultQuestion: Omit<IntakeQuestion, 'id'> = {
 // Sortable row component
 function SortableRow({
   question,
-  index,
+  index: _index,
   questions,
   onEdit,
   onDuplicate,
