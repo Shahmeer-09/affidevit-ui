@@ -66,10 +66,10 @@ export function VerifyOtpPage() {
           <div className="p-2 bg-primary/10 rounded-lg">
             <Mail className="h-6 w-6 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold">Verify your email</h1>
+          <h1 className="text-2xl font-bold">Verify your phone number</h1>
         </div>
         <p className="text-muted-foreground mt-1">
-          We sent a 6-digit code to
+          We sent a 6-digit code to your   phone number you provided during registration. Please enter the code below to verify your account. If you are a commissioner, this will complete your phone number verification step, but your account will still be pending admin approval. 
           {email ? (
             <span className="font-medium text-foreground"> {email}</span>
           ) : (
@@ -77,7 +77,7 @@ export function VerifyOtpPage() {
           )}
           .{' '}
           {isCommissioner
-            ? 'Verify your email to complete your commissioner application.'
+            ? 'Verify your phone number complete your commissioner application.'
             : 'Enter it below to activate your account.'}
         </p>
       </div>
@@ -111,7 +111,7 @@ export function VerifyOtpPage() {
           disabled={isLoading || code.length < 6}
         >
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Verify Email
+          Verify your account
         </Button>
       </form>
 

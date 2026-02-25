@@ -130,6 +130,7 @@ export interface IntakeQuestion {
     field: string;
     value: string | string[];
   };
+  computed_fields?: string[]; // e.g. ['age'] — marks this date field as source for age computation
 }
 
 export interface AffidavitType {

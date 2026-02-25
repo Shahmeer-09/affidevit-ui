@@ -386,6 +386,26 @@ export function QuestionBuilder({ questions, onChange, allowAdd = false }: Quest
                 />
               </div>
 
+              {editingQuestion.type === 'date' && (
+                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                  <div className="space-y-0.5">
+                    <Label>Auto-compute Age</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Calculates age from this field — required for Electoral ID verification
+                    </p>
+                  </div>
+                  <Switch
+                    checked={editingQuestion.computed_fields?.includes('age') ?? false}
+                    onCheckedChange={(v) =>
+                      handleQuestionChange(
+                        'computed_fields',
+                        v ? ['age'] : undefined
+                      )
+                    }
+                  />
+                </div>
+              )}
+
               {hasOptionsType && (
                 <>
                   <Separator />

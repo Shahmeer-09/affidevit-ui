@@ -74,6 +74,8 @@ export interface Commissioner {
   organization: string | null;
   address: string | null;
   is_featured: boolean;
+  is_active: boolean;
+  is_email_verified: boolean;
   availability: Record<string, unknown>;
   // Bank/Payment details
   bank_name: string | null;
@@ -294,6 +296,7 @@ export interface IntakeQuestion {
     value: string | string[];
   };
   help_text?: string;
+  computed_fields?: string[]; // e.g. ['age'] — marks this date field as source for age computation
 }
 
 export interface ScenarioPattern {
@@ -438,7 +441,16 @@ export interface RefineTemplateResponse {
   success: boolean;
   refined_template?: string;
   new_fields?: string[];
-  new_fields_meta?: { id: string; label: string; help_text: string }[];
+  new_fields_meta?: {
+    id: string;
+    label: string;
+    help_text: string;
+    type?: string;
+    validation?: Record<string, unknown>;
+    placeholder?: string;
+    options?: { value: string; label: string }[];
+    computed_fields?: string[];
+  }[];
   examples_used?: number;
   error?: string;
 }
@@ -1042,6 +1054,37 @@ export const adminApi = baseApi.injectEndpoints({
       invalidatesTags: ['Commissioner'],
     }),
 
+    // Approve or disapprove a commissioner (sets is_featured + is_active together)
+    approveCommissioner: builder.mutation<
+      { success: boolean; is_featured: boolean; is_active: boolean; message: string },
+      { id: number; action: 'approve' | 'disapprove' }
+    >({
+      query: ({ id, action }) => ({
+        url: `/admin/commissioners/${id}/approve/`,
+        method: 'POST',
+        body: { action },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Commissioner', id },
+        'Commissioner',
+      ],
+    }),
+
+    // Manually mark a commissioner as email-verified (admin override)
+    manualVerifyCommissioner: builder.mutation<
+      { success: boolean; is_email_verified: boolean; message: string },
+      number
+    >({
+      query: (id) => ({
+        url: `/admin/commissioners/${id}/manual-verify/`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Commissioner', id },
+        'Commissioner',
+      ],
+    }),
+
     // Get commissioner payment summary
     getCommissionerPaymentSummary: builder.query<CommissionerPaymentSummary, number>({
       query: (id) => `/admin/commissioners/${id}/payment-summary/`,
@@ -1350,6 +1393,8 @@ export const {
   useCreateCommissionerMutation,
   useUpdateCommissionerMutation,
   useDeleteCommissionerMutation,
+  useApproveCommissionerMutation,
+  useManualVerifyCommissionerMutation,
   // Commissioner Payments
   useGetCommissionerPaymentSummaryQuery,
   useGetCommissionerPaymentHistoryQuery,

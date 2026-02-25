@@ -563,10 +563,10 @@ export function AdminTypeEditPage() {
                       .filter((fieldId) => !existingIds.has(fieldId.toLowerCase()))
                       .map((fieldId, idx) => {
                         const meta = metaMap.get(fieldId.toLowerCase());
-                        return {
+                        const question: Record<string, unknown> = {
                           id: fieldId,
                           field_name: fieldId,
-                          type: 'text' as const,
+                          type: (meta as Record<string, unknown>)?.type || 'text',
                           label: meta?.label
                             ? meta.label
                             : fieldId
@@ -576,6 +576,13 @@ export function AdminTypeEditPage() {
                           required: true,
                           order: prev.intake_schema.length + idx + 1,
                         };
+                        // Carry over validation, placeholder, options, computed_fields from backend
+                        const metaAny = meta as Record<string, unknown> | undefined;
+                        if (metaAny?.validation) question.validation = metaAny.validation;
+                        if (metaAny?.placeholder) question.placeholder = metaAny.placeholder;
+                        if (metaAny?.options) question.options = metaAny.options;
+                        if (metaAny?.computed_fields) question.computed_fields = metaAny.computed_fields;
+                        return question as typeof prev.intake_schema[number];
                       });
 
                     return {

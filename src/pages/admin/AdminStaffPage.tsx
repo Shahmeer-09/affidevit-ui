@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardHeader } from '@/components/features';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
 import {
   AvailabilityScheduler,
   parseAvailability,
@@ -53,6 +52,8 @@ import {
   useGetCommissionerPaymentHistoryQuery,
   useMarkCommissionerPaidMutation,
   useGenerateCommissionerSlotsMutation,
+  useApproveCommissionerMutation,
+  useManualVerifyCommissionerMutation,
   type Commissioner,
   type Reviewer,
   type PaymentLog,
@@ -77,6 +78,9 @@ import {
   Building,
   Clock,
   RefreshCw,
+  CheckCircle2,
+  XCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -190,6 +194,12 @@ export function AdminStaffPage() {
   const [markPaid, { isLoading: markingPaid }] = useMarkCommissionerPaidMutation();
   const [generateSlots] = useGenerateCommissionerSlotsMutation();
   const [generatingSlotsFor, setGeneratingSlotsFor] = useState<number | null>(null);
+  const [approveCommissioner] = useApproveCommissionerMutation();
+  const [manualVerifyCommissioner] = useManualVerifyCommissionerMutation();
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [manualVerifyingId, setManualVerifyingId] = useState<number | null>(null);
+  const [showUnverifiedDialog, setShowUnverifiedDialog] = useState(false);
+  const [pendingApproveCommissioner, setPendingApproveCommissioner] = useState<Commissioner | null>(null);
 
   // Debug payment history
   React.useEffect(() => {
@@ -263,7 +273,6 @@ export function AdminStaffPage() {
       if (activeTab === 'commissioner') {
         if (formData.commission_number) formDataToSend.append('commission_number', formData.commission_number);
         if (formData.commission_expiry) formDataToSend.append('commission_expiry', formData.commission_expiry);
-        formDataToSend.append('is_featured', String(formData.is_featured || false));
         if (formData.bio) formDataToSend.append('bio', formData.bio);
         if (formData.organization) formDataToSend.append('organization', formData.organization);
         if (formData.address) formDataToSend.append('address', formData.address);
@@ -298,7 +307,6 @@ export function AdminStaffPage() {
       if (activeTab === 'commissioner') {
         if (formData.commission_number) formDataToSend.append('commission_number', formData.commission_number);
         if (formData.commission_expiry) formDataToSend.append('commission_expiry', formData.commission_expiry);
-        formDataToSend.append('is_featured', String(formData.is_featured || false));
         if (formData.bio) formDataToSend.append('bio', formData.bio);
         if (formData.organization) formDataToSend.append('organization', formData.organization);
         if (formData.address) formDataToSend.append('address', formData.address);
@@ -379,6 +387,50 @@ export function AdminStaffPage() {
       const err = error as { data?: { detail?: string; [key: string]: unknown } };
       const message = err.data?.detail || JSON.stringify(err.data) || 'Failed to process payment';
       toast.error(message);
+    }
+  };
+
+  // Approve / Disapprove commissioner handler
+  const handleApprove = async (commissionerId: number, action: 'approve' | 'disapprove') => {
+    setApprovingId(commissionerId);
+    try {
+      await approveCommissioner({ id: commissionerId, action }).unwrap();
+      toast.success(action === 'approve' ? 'Commissioner approved successfully' : 'Commissioner disapproved');
+    } catch (error: unknown) {
+      const err = error as { data?: { detail?: string; is_email_verified?: boolean; can_manually_verify?: boolean } };
+      if (err.data?.is_email_verified === false && err.data?.can_manually_verify) {
+        // Commissioner hasn't verified their email — show manual-verify dialog + toast
+        const target = commissioners.find(c => c.id === commissionerId) ?? null;
+        setPendingApproveCommissioner(target);
+        setShowUnverifiedDialog(true);
+        // Toast the detailed error message
+        if (err.data?.detail) {
+          toast.warning(err.data.detail, {
+            duration: 4000,
+          });
+        }
+      } else {
+        toast.error(err.data?.detail || `Failed to ${action} commissioner`);
+      }
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  // Manual verify handler
+  const handleManualVerify = async () => {
+    if (!pendingApproveCommissioner) return;
+    setManualVerifyingId(pendingApproveCommissioner.id);
+    try {
+      const result = await manualVerifyCommissioner(pendingApproveCommissioner.id).unwrap();
+      toast.success(result.message);
+      setShowUnverifiedDialog(false);
+      setPendingApproveCommissioner(null);
+    } catch (error: unknown) {
+      const err = error as { data?: { detail?: string } };
+      toast.error(err.data?.detail || 'Failed to mark commissioner as verified');
+    } finally {
+      setManualVerifyingId(null);
     }
   };
 
@@ -615,11 +667,18 @@ export function AdminStaffPage() {
                           </Button>
                         </TableCell>
                         <TableCell>
-                          {commissioner.is_featured ? (
-                            <Badge variant="default">Approved</Badge>
-                          ) : (
-                            <Badge variant="destructive">Pending</Badge>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {commissioner.is_featured ? (
+                              <Badge variant="default">Approved</Badge>
+                            ) : (
+                              <Badge variant="destructive">Pending</Badge>
+                            )}
+                            {commissioner.is_email_verified ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Verified</Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Unverified</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>
@@ -629,6 +688,56 @@ export function AdminStaffPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {/* Mark Verified Manually — only shown when unverified */}
+                              {!commissioner.is_email_verified && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setPendingApproveCommissioner(commissioner);
+                                      setShowUnverifiedDialog(true);
+                                    }}
+                                    disabled={manualVerifyingId === commissioner.id}
+                                    className="text-blue-600 focus:text-blue-600"
+                                  >
+                                    {manualVerifyingId === commissioner.id ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <ShieldCheck className="h-4 w-4 mr-2" />
+                                    )}
+                                    Mark Verified Manually
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              {/* Approve / Disapprove — primary action */}
+                              {commissioner.is_featured ? (
+                                <DropdownMenuItem
+                                  onClick={() => handleApprove(commissioner.id, 'disapprove')}
+                                  disabled={approvingId === commissioner.id}
+                                  className="text-amber-600 focus:text-amber-600"
+                                >
+                                  {approvingId === commissioner.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                  )}
+                                  Disapprove
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => handleApprove(commissioner.id, 'approve')}
+                                  disabled={approvingId === commissioner.id}
+                                  className="text-green-600 focus:text-green-600"
+                                >
+                                  {approvingId === commissioner.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  Approve
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleOpenAvailabilityDialog(commissioner)}>
                                 <Clock className="h-4 w-4 mr-2" />
                                 View Availability
@@ -1002,15 +1111,11 @@ export function AdminStaffPage() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Approve Commissioner</Label>
+                    <Label>Approval</Label>
                     <p className="text-sm text-muted-foreground">
-                      Approve this commissioner to allow login
+                      Use the <strong>Approve</strong> action in the commissioners table to grant or revoke access.
                     </p>
                   </div>
-                  <Switch
-                    checked={formData.is_featured}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
-                  />
                 </div>
               </>
             )}
@@ -1194,15 +1299,15 @@ export function AdminStaffPage() {
 
                   <div className="flex items-center justify-between pt-2">
                     <div className="space-y-0.5">
-                      <Label>Approve Commissioner</Label>
+                      <Label>Approval</Label>
                       <p className="text-sm text-muted-foreground">
-                        Approve this commissioner to allow login
+                        Current status: {editingStaff && 'is_featured' in editingStaff && (editingStaff as Commissioner).is_featured ? (
+                          <span className="text-green-600 font-medium">Approved</span>
+                        ) : (
+                          <span className="text-amber-600 font-medium">Pending / Disapproved</span>
+                        )}. Use the <strong>Approve / Disapprove</strong> action in the table to change.
                       </p>
                     </div>
-                    <Switch
-                      checked={formData.is_featured}
-                      onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
-                    />
                   </div>
                 </div>
 
@@ -1266,6 +1371,41 @@ export function AdminStaffPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Unverified Commissioner Dialog */}
+      <AlertDialog open={showUnverifiedDialog} onOpenChange={(open) => {
+        if (!open) { setShowUnverifiedDialog(false); setPendingApproveCommissioner(null); }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-amber-500" />
+              Commissioner Not Yet Verified
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                <strong>{pendingApproveCommissioner?.first_name} {pendingApproveCommissioner?.last_name}</strong> ({pendingApproveCommissioner?.email}) has not completed email verification yet.
+              </p>
+              <p>
+                You can ask them to check their inbox and complete the OTP flow, or — if you have confirmed their identity through another channel — mark them as verified manually so you can proceed to approve.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setShowUnverifiedDialog(false); setPendingApproveCommissioner(null); }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleManualVerify}
+              disabled={!!manualVerifyingId}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {manualVerifyingId ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+              Mark Verified Manually
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
