@@ -559,30 +559,28 @@ export function AdminTypeEditPage() {
                       (newFieldsMeta ?? []).map((m) => [m.id.toLowerCase(), m])
                     );
 
-                    const newQuestions = newFields
+                    const newQuestions: typeof prev.intake_schema = newFields
                       .filter((fieldId) => !existingIds.has(fieldId.toLowerCase()))
                       .map((fieldId, idx) => {
                         const meta = metaMap.get(fieldId.toLowerCase());
-                        const question: Record<string, unknown> = {
+                        const inferredType = (meta?.type ?? 'text') as IntakeQuestion['type'];
+                        return {
                           id: fieldId,
                           field_name: fieldId,
-                          type: (meta as Record<string, unknown>)?.type || 'text',
+                          type: inferredType,
                           label: meta?.label
                             ? meta.label
                             : fieldId
                                 .replace(/_/g, ' ')
-                                .replace(/\b\w/g, (c) => c.toUpperCase()),
+                                .replace(/\b\w/g, (c: string) => c.toUpperCase()),
                           help_text: meta?.help_text || '',
                           required: true,
                           order: prev.intake_schema.length + idx + 1,
+                          ...(meta?.validation && { validation: meta.validation as IntakeQuestion['validation'] }),
+                          ...(meta?.placeholder && { placeholder: meta.placeholder }),
+                          ...(meta?.options && { options: meta.options }),
+                          ...(meta?.computed_fields && { computed_fields: meta.computed_fields }),
                         };
-                        // Carry over validation, placeholder, options, computed_fields from backend
-                        const metaAny = meta as Record<string, unknown> | undefined;
-                        if (metaAny?.validation) question.validation = metaAny.validation;
-                        if (metaAny?.placeholder) question.placeholder = metaAny.placeholder;
-                        if (metaAny?.options) question.options = metaAny.options;
-                        if (metaAny?.computed_fields) question.computed_fields = metaAny.computed_fields;
-                        return question as typeof prev.intake_schema[number];
                       });
 
                     return {

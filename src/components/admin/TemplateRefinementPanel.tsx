@@ -29,6 +29,11 @@ export interface FieldMeta {
   id: string;
   label: string;
   help_text: string;
+  type?: string;
+  validation?: Record<string, unknown>;
+  placeholder?: string;
+  options?: { value: string; label: string }[];
+  computed_fields?: string[];
 }
 
 interface TemplateRefinementPanelProps {
