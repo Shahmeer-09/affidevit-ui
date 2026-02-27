@@ -149,9 +149,35 @@ export function CommissionerSchedulePage() {
                 Booked slots will appear here when clients schedule time with you
               </p>
             </div>
-          ) : (
+          ) : (() => {
+            // Filter out completed requests and rejected/cancelled appointments
+            const visibleSlots = [...schedule]
+              .filter((s) => {
+                const apptStatus = s.appointment_status;
+                const reqStatus = s.request_details?.status?.toUpperCase();
+                // Remove rejected / cancelled slots
+                if (['rejected', 'cancelled_by_commissioner', 'cancelled_by_user'].includes(apptStatus ?? '')) return false;
+                // Remove completed requests
+                if (reqStatus === 'COMPLETED') return false;
+                return true;
+              })
+              .sort((a, b) => b.id - a.id);
+
+            if (visibleSlots.length === 0) {
+              return (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No upcoming appointments</p>
+                  <p className="text-sm mt-1">
+                    Completed and declined appointments are automatically removed
+                  </p>
+                </div>
+              );
+            }
+
+            return (
             <div className="space-y-4">
-              {[...schedule].sort((a, b) => b.id - a.id).map((slot) => {
+              {visibleSlots.map((slot) => {
                 const { month, day, dateTime } = formatSlotParts(slot.start_time);
                 return (
                 <div
@@ -256,7 +282,8 @@ export function CommissionerSchedulePage() {
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 

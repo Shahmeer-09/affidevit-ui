@@ -6,6 +6,7 @@ import type { Request, RequestStatus, Stamp, FrictionReport, PDFPreferences } fr
 export interface CompleteRequestParams {
   request_id: number;
   notes?: string;
+  final_text?: string;
 }
 
 export interface FrictionReportParams {
@@ -78,17 +79,32 @@ export const commissionerApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Save commissioner edits without completing
+    saveDraft: builder.mutation<
+      { success: boolean; message: string },
+      { request_id: number; draft_text: string }
+    >({
+      query: ({ request_id, draft_text }) => ({
+        url: `/commissioner/save-draft/${request_id}/`,
+        method: 'PATCH',
+        body: { draft_text },
+      }),
+      invalidatesTags: (_result, _error, { request_id }) => [
+        { type: 'Request', id: request_id },
+      ],
+    }),
+
     // Mark request as completed
     completeRequest: builder.mutation<
       { success: boolean; message: string; stamp: Stamp; payout_message?: string },
       CompleteRequestParams
     >({
-      query: ({ request_id, notes }) => ({
+      query: ({ request_id, notes, final_text }) => ({
         url: `/commissioner/complete/${request_id}/`,
         method: 'POST',
-        body: { notes },
+        body: { notes, final_text },
       }),
-      invalidatesTags: ['Stamps', 'AssignedRequests'],
+      invalidatesTags: ['Stamps', 'AssignedRequests', 'CommissionerSlot'],
     }),
 
     // Create friction report
@@ -166,6 +182,7 @@ export const {
   useLookupRequestQuery,
   useLazyLookupRequestQuery,
   useTakeoverRequestMutation,
+  useSaveDraftMutation,
   useCompleteRequestMutation,
   useCreateFrictionReportMutation,
   useGetStampsQuery,

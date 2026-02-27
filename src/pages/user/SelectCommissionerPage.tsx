@@ -132,13 +132,18 @@ export function SelectCommissionerPage() {
   const handleSubmissionConfirm = async () => {
     if (!id || !request) return;
     
-    // If already in review/approved flow, just navigate back
-    if (request.status === 'needs_review' || request.status === 'approved') {
-        toast.success('Appointment Updated', {
-            description: request.status === 'approved'
-              ? 'Your appointment has been scheduled.'
-              : 'Your appointment has been rescheduled.',
-        });
+    // If already in a valid state (review, approved, or draft_ready), just navigate — don't call submit
+    if (
+      request.status === 'needs_review' ||
+      request.status === 'approved' ||
+      request.status === 'draft_ready'
+    ) {
+        const msg = request.status === 'approved'
+          ? 'Your appointment has been scheduled.'
+          : request.status === 'draft_ready'
+          ? 'Your appointment is confirmed. Your affidavit is ready for the commissioner.'
+          : 'Your appointment has been rescheduled.';
+        toast.success('Appointment Confirmed', { description: msg });
         navigate(ROUTES.REQUEST_STATUS.replace(':id', id));
         return;
     }

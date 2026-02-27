@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,136 +7,239 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { StatusBadge, TierBadge } from '@/components/features';
-import { ROUTES, API_BASE_URL } from '@/lib/constants';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { ROUTES } from '@/lib/constants';
 import { 
   useLookupRequestQuery,
+  useSaveDraftMutation,
   useCompleteRequestMutation,
   useCreateFrictionReportMutation,
 } from '@/store/api/commissionerApi';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
-  Download,
   FileText,
   Clock,
   AlertCircle,
   CheckCircle,
   Stamp,
-  Eye,
   Loader2,
   AlertTriangle,
   User,
-  FileType,
+  Printer,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+// Page format dimensions used in CSS @page rule
+const PAGE_FORMATS: Record<string, string> = {
+  letter: '8.5in 11in',
+  legal:  '8.5in 14in',
+};
 
 export function CommissionerRequestPage() {
   const { code } = useParams();
   const navigate = useNavigate();
+  const printStyleRef = useRef<HTMLStyleElement | null>(null);
+
   const [rejectReason, setRejectReason] = useState('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [stampComplete, setStampComplete] = useState(false);
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [editedText, setEditedText] = useState('');
+  const [hasEdits, setHasEdits] = useState(false);
+  const [printFormat, setPrintFormat] = useState<'letter' | 'legal'>('letter');
+  const [printWarningOpen, setPrintWarningOpen] = useState(false);
 
   // API hooks
   const { data: request, isLoading, error } = useLookupRequestQuery(code || '', {
     skip: !code,
   });
   const [completeRequest, { isLoading: isCompleting }] = useCompleteRequestMutation();
+  const [saveDraft, { isLoading: isSaving }] = useSaveDraftMutation();
   const [createFrictionReport, { isLoading: isReporting }] = useCreateFrictionReportMutation();
 
-  // Check if another commissioner is assigned
-  // const isAssignedToOther = request?.commissioner && 
-  //   request.commissioner.id !== undefined; // Will need to compare with current user
+  // APPROVED = reviewed & approved by reviewer
+  // DRAFT_READY = instant affidavit type that skips reviewer queue
+  const canComplete = ['APPROVED', 'DRAFT_READY'].includes(
+    request?.status?.toUpperCase() ?? ''
+  );
 
-  const canComplete = request?.status?.toUpperCase() === 'APPROVED';
+  // Initialise editor with draft text when request first loads (derived state pattern)
+  const [prevDraftText, setPrevDraftText] = useState<string | undefined>(undefined);
+  if (request?.draft_text !== undefined && request.draft_text !== prevDraftText) {
+    setPrevDraftText(request.draft_text);
+    setEditedText(request.draft_text);
+    setHasEdits(false);
+  }
 
-  const handleDownloadPDF = useCallback(async () => {
-    if (!request) return;
-    
+  const handleEditorChange = useCallback((html: string) => {
+    setEditedText(html);
+    setHasEdits(html !== request?.draft_text);
+  }, [request?.draft_text]);
+
+  // Save edits to backend without completing the request
+  const handleSaveDraft = useCallback(async () => {
+    if (!request || !editedText.trim()) return;
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/requests/${request.id}/pdf/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) throw new Error('Failed to download PDF');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `affidavit-${request.request_code}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success('PDF downloaded successfully');
-    } catch (err) {
-      toast.error('Failed to download PDF');
+      await saveDraft({
+        request_id: request.id,
+        draft_text: editedText,
+      }).unwrap();
+      setHasEdits(false);
+      toast.success('Edits saved successfully.');
+    } catch (err: unknown) {
+      const error = err as { data?: { error?: string } };
+      toast.error(error?.data?.error || 'Failed to save edits');
     }
-  }, [request]);
+  }, [request, editedText, saveDraft]);
 
-  const handleDownloadWord = useCallback(async () => {
-    if (!request) return;
-    
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/requests/${request.id}/word/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) throw new Error('Failed to download Word document');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `affidavit-${request.request_code}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success('Word document downloaded successfully');
-    } catch (err) {
-      toast.error('Failed to download Word document');
+  // Core print logic — appends a bare div directly to <body> (outside #root)
+  // so that hiding #root during print doesn't suppress the content.
+  const executePrint = useCallback(() => {
+    // Remove any leftover style from a previous print
+    if (printStyleRef.current) {
+      printStyleRef.current.remove();
+      printStyleRef.current = null;
     }
-  }, [request]);
+    const existingContainer = document.getElementById('commissioner-print-body');
+    if (existingContainer) existingContainer.remove();
 
-  const handlePreviewPDF = useCallback(async () => {
-    if (!request) return;
-    
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/requests/${request.id}/pdf/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) throw new Error('Failed to load PDF');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      setPdfPreviewUrl(url);
-    } catch (err) {
-      toast.error('Failed to load PDF preview');
+    // Strip trailing empty paragraphs that TipTap appends — prevents blank extra pages
+    const cleanedHtml = editedText
+      .replace(/(<p[^>]*>(\s|&nbsp;|<br\s*\/?>)*<\/p>\s*)+$/gi, '')
+      .trim();
+
+    // Inject the affidavit HTML directly onto <body> — outside the React #root tree
+    const printContainer = document.createElement('div');
+    printContainer.id = 'commissioner-print-body';
+    printContainer.innerHTML = cleanedHtml;
+    document.body.appendChild(printContainer);
+
+    const style = document.createElement('style');
+    style.id = 'commissioner-print-style';
+    style.textContent = `
+      /* Hide the print container on screen */
+      #commissioner-print-body { display: none; }
+
+      @page {
+        size: ${PAGE_FORMATS[printFormat]};
+        margin: 1in;
+      }
+
+      @media print {
+        /* Collapse the full-page height set by global CSS — prevents blank second page */
+        html, body {
+          height: auto !important;
+          min-height: 0 !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        /* Hide the React app and collapse its reserved space */
+        #root {
+          display: none !important;
+          height: 0 !important;
+          min-height: 0 !important;
+          overflow: hidden !important;
+        }
+
+        /* Show & style the print container */
+        #commissioner-print-body {
+          display: block !important;
+          font-family: 'Times New Roman', Times, serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          color: #000;
+        }
+
+        /* Paragraph spacing — matches editor [&_p]:my-4 */
+        #commissioner-print-body p {
+          margin: 1em 0;
+          line-height: 1.6;
+        }
+
+        /* Ordered lists — matches editor [&_ol]:list-decimal [&_ol]:pl-6 */
+        #commissioner-print-body ol {
+          list-style-type: decimal;
+          padding-left: 2em;
+          margin: 1em 0;
+        }
+
+        /* Unordered lists — matches editor [&_ul]:list-disc [&_ul]:pl-6 */
+        #commissioner-print-body ul {
+          list-style-type: disc;
+          padding-left: 2em;
+          margin: 1em 0;
+        }
+
+        /* List items — matches editor [&_li]:my-1 */
+        #commissioner-print-body li {
+          margin: 0.25em 0;
+        }
+
+        /* Nested list indentation */
+        #commissioner-print-body ol ol,
+        #commissioner-print-body ul ul,
+        #commissioner-print-body ol ul,
+        #commissioner-print-body ul ol {
+          padding-left: 2em;
+          margin: 0.25em 0;
+        }
+
+        /* Bold / italic / underline */
+        #commissioner-print-body strong { font-weight: bold; }
+        #commissioner-print-body em { font-style: italic; }
+        #commissioner-print-body u { text-decoration: underline; }
+
+        /* Text alignment */
+        #commissioner-print-body [style*="text-align: center"] { text-align: center; }
+        #commissioner-print-body [style*="text-align: right"] { text-align: right; }
+
+        /* Headings */
+        #commissioner-print-body h1 { font-size: 20pt; font-weight: bold; margin: 0.5em 0; }
+        #commissioner-print-body h2 { font-size: 16pt; font-weight: bold; margin: 0.5em 0; }
+        #commissioner-print-body h3 { font-size: 14pt; font-weight: bold; margin: 0.5em 0; }
+
+        /* Suppress any remaining empty paragraphs */
+        #commissioner-print-body p:empty,
+        #commissioner-print-body p:last-child:empty { display: none; margin: 0; padding: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+    printStyleRef.current = style;
+
+    window.print();
+
+    window.addEventListener('afterprint', () => {
+      style.remove();
+      printContainer.remove();
+      printStyleRef.current = null;
+    }, { once: true });
+  }, [printFormat, editedText]);
+
+  // Print button — warns if unsaved edits exist
+  const handlePrint = useCallback(() => {
+    if (hasEdits) {
+      setPrintWarningOpen(true);
+    } else {
+      executePrint();
     }
-  }, [request]);
+  }, [hasEdits, executePrint]);
 
-  const handleMarkComplete = async () => {
+  // Must be defined before handleStampThenPrint which calls it
+  const handleMarkComplete = useCallback(async () => {
     if (!request) return;
-    
     try {
-      const result = await completeRequest({ request_id: request.id }).unwrap();
+      const result = await completeRequest({
+        request_id: request.id,
+        final_text: editedText || undefined,
+      }).unwrap();
       setStampComplete(true);
-      
-      // Show payout message if available
       if (result.payout_message) {
         toast.success(result.payout_message, {
           duration: 5000,
@@ -145,14 +248,29 @@ export function CommissionerRequestPage() {
       } else {
         toast.success('Notarization complete! Stamp recorded.');
       }
-    } catch (err: any) {
-      toast.error(err?.data?.error || 'Failed to mark as complete');
+    } catch (err: unknown) {
+      const error = err as { data?: { error?: string } };
+      toast.error(error?.data?.error || 'Failed to mark as complete');
     }
+  }, [request, completeRequest, editedText]);
+
+  // Print first (while editor is still visible), then stamp
+  const handleStampThenPrint = async () => {
+    setPrintWarningOpen(false);
+    executePrint();
+    // Small delay to let print dialog open before stamping changes the DOM
+    setTimeout(() => {
+      handleMarkComplete();
+    }, 500);
+  };
+
+  const handlePrintOnly = () => {
+    setPrintWarningOpen(false);
+    executePrint();
   };
 
   const handleReportIssue = async () => {
     if (!request || !rejectReason.trim()) return;
-    
     try {
       await createFrictionReport({ 
         request_id: request.id, 
@@ -162,8 +280,9 @@ export function CommissionerRequestPage() {
       setRejectDialogOpen(false);
       setRejectReason('');
       navigate(ROUTES.COMMISSIONER_LOOKUP);
-    } catch (err: any) {
-      toast.error(err?.data?.error || 'Failed to report issue');
+    } catch (err: unknown) {
+      const error = err as { data?: { error?: string } };
+      toast.error(error?.data?.error || 'Failed to report issue');
     }
   };
 
@@ -198,56 +317,119 @@ export function CommissionerRequestPage() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={() => navigate(-1)}>
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          className="cursor-pointer hover:bg-muted transition-colors"
+          aria-label="Go back"
+        >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handlePreviewPDF}>
-            <Eye className="h-4 w-4 mr-2" />
-            Preview PDF
-          </Button>
-          <Button variant="outline" onClick={handleDownloadPDF}>
-            <Download className="h-4 w-4 mr-2" />
-            PDF
-          </Button>
-          <Button variant="outline" onClick={handleDownloadWord}>
-            <FileType className="h-4 w-4 mr-2" />
-            Word
-          </Button>
-        </div>
       </div>
 
       {/* Lock Warning */}
-      {(request as any).lock_warning && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            {(request as any).lock_warning}
-          </AlertDescription>
-        </Alert>
-      )}
+      {(() => {
+        const r = request as unknown as { lock_warning?: string };
+        return r.lock_warning ? (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{r.lock_warning}</AlertDescription>
+          </Alert>
+        ) : null;
+      })()}
 
       {stampComplete ? (
-        <Card className="border-green-500 bg-green-50 dark:bg-green-950/20">
-          <CardContent className="py-12 text-center">
-            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Notarization Complete!</h2>
-            <p className="text-muted-foreground mb-6">
-              The affidavit has been successfully stamped and recorded for payout.
-            </p>
-            <div className="flex gap-4 justify-center">
-              <Button asChild>
-                <Link to={ROUTES.COMMISSIONER_LOOKUP}>Back to Lookup</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          <Card className="border-green-500 bg-green-50 dark:bg-green-950/20">
+            <CardContent className="py-12 text-center">
+              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Notarization Complete!</h2>
+              <p className="text-muted-foreground mb-6">
+                The affidavit has been successfully stamped and recorded for payout.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={executePrint}
+                  className="cursor-pointer hover:bg-muted transition-colors"
+                  aria-label="Print the stamped document"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print Document
+                </Button>
+                <Button
+                  asChild
+                  className="cursor-pointer hover:opacity-90 transition-opacity"
+                >
+                  <Link to={ROUTES.COMMISSIONER_LOOKUP}>Back to Lookup</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Hidden print target — keeps editor content available after stamp */}
+          <div id="commissioner-print-target" className="hidden">
+            <div
+              className="ProseMirror"
+              dangerouslySetInnerHTML={{ __html: editedText }}
+            />
+          </div>
+        </>
       ) : (
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Main Content */}
+
+          {/* Print Warning Dialog — shown when printing with unsaved edits */}
+          <Dialog open={printWarningOpen} onOpenChange={setPrintWarningOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  Unsaved Edits Detected
+                </DialogTitle>
+                <DialogDescription>
+                  You have unsaved edits. If you print without stamping, the user will
+                  download the <strong>original unedited version</strong>. What would you like to do?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 pt-2">
+                <Button
+                  className="w-full cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={handleStampThenPrint}
+                  disabled={!canComplete || isCompleting}
+                  aria-label="Stamp and complete document, save edits, then print"
+                >
+                  {isCompleting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Stamp className="h-4 w-4 mr-2" />
+                  )}
+                  Stamp &amp; Complete, then Print
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full cursor-pointer hover:bg-muted transition-colors"
+                  onClick={handlePrintOnly}
+                  aria-label="Print current view only, edits will not be saved"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print Only (edits not saved)
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full cursor-pointer hover:bg-muted transition-colors"
+                  onClick={() => setPrintWarningOpen(false)}
+                  aria-label="Cancel and return to editing"
+                >
+                  Cancel — Keep Editing
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Main Content — Inline Editor */}
           <div className="lg:col-span-2 space-y-6">
             {/* Request Info */}
             <Card>
@@ -270,41 +452,72 @@ export function CommissionerRequestPage() {
                   {request.commissioner && (
                     <span className="flex items-center gap-1 text-muted-foreground">
                       <User className="h-4 w-4" />
-                      Assigned to: {request.commissioner.first_name} {request.commissioner.last_name}
+                      {request.commissioner.first_name} {request.commissioner.last_name}
                     </span>
                   )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* PDF Preview */}
+            {/* Document Editor */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Document Preview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pdfPreviewUrl ? (
-                  <iframe 
-                    src={pdfPreviewUrl} 
-                    className="w-full h-[600px] rounded-lg border"
-                    title="PDF Preview"
-                  />
-                ) : (
-                  <div className="aspect-[8.5/11] bg-muted rounded-lg flex items-center justify-center border-2 border-dashed">
-                    <div className="text-center text-muted-foreground">
-                      <FileText className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                      <p className="font-medium">Affidavit Document</p>
-                      <p className="text-sm mb-4">Click "Preview PDF" to view the document</p>
-                      <Button variant="outline" onClick={handlePreviewPDF}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        Load Preview
-                      </Button>
-                    </div>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Affidavit Document
+                    </CardTitle>
+                    {hasEdits && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">
+                        <Edit3 className="h-3 w-3 mr-1" />
+                        Unsaved edits
+                      </Badge>
+                    )}
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    {/* Page Format Selector */}
+                    <Select
+                      value={printFormat}
+                      onValueChange={(v) => setPrintFormat(v as typeof printFormat)}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-28 text-xs cursor-pointer"
+                        aria-label="Select print page format"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="letter">Letter (8.5×11)</SelectItem>
+                        <SelectItem value="legal">Legal (8.5×14)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {/* Print Button */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrint}
+                      className="cursor-pointer hover:bg-muted transition-colors"
+                      aria-label={`Print document in ${printFormat} format`}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Print
+                    </Button>
+                  </div>
+                </div>
+                <CardDescription className="text-xs mt-1">
+                  You may make minor corrections before notarizing. Edits are saved when you click "Stamp &amp; Complete".
+                  {' '}<span className="text-amber-600">Tip: In the print dialog, uncheck &ldquo;Headers and footers&rdquo; to remove the date/URL added by your browser.</span>
+                </CardDescription>
+              </CardHeader>
+              {/* Printable target â€” only this element is printed */}
+              <CardContent id="commissioner-print-target" className="p-0">
+                <RichTextEditor
+                  content={editedText}
+                  onChange={handleEditorChange}
+                  editable={canComplete}
+                  className="rounded-none border-0 border-t"
+                />
               </CardContent>
             </Card>
           </div>
@@ -316,29 +529,59 @@ export function CommissionerRequestPage() {
               <CardHeader>
                 <CardTitle>Notarization Actions</CardTitle>
                 <CardDescription>
-                  {canComplete 
-                    ? 'This document is ready for your stamp'
-                    : 'This document is not ready for notarization'}
+                  {canComplete
+                    ? 'Document is ready for your stamp'
+                    : 'Awaiting reviewer approval before notarization'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button 
-                  className="w-full" 
-                  size="lg" 
+                {/* Save Edits Button — saves draft without completing */}
+                <Button
+                  variant="outline"
+                  className="w-full cursor-pointer hover:bg-muted transition-colors"
+                  size="lg"
+                  disabled={!canComplete || !hasEdits || isSaving}
+                  onClick={handleSaveDraft}
+                  aria-label="Save your edits without completing"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  {isSaving ? 'Saving...' : 'Save Edits'}
+                </Button>
+
+                {/* Stamp & Complete Button — finalizes and removes from lookup */}
+                <Button
+                  className="w-full cursor-pointer hover:opacity-90 transition-opacity"
+                  size="lg"
                   disabled={!canComplete || isCompleting}
                   onClick={handleMarkComplete}
+                  aria-label="Stamp and mark document as complete"
                 >
                   {isCompleting ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Stamp className="h-4 w-4 mr-2" />
                   )}
-                  {isCompleting ? 'Processing...' : 'Mark Complete'}
+                  {isCompleting ? 'Processing...' : 'Stamp & Complete'}
                 </Button>
+
+                {hasEdits && (
+                  <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1">
+                    <Edit3 className="h-3 w-3" />
+                    You have unsaved edits
+                  </p>
+                )}
 
                 <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full text-destructive">
+                    <Button
+                      variant="outline"
+                      className="w-full text-destructive cursor-pointer hover:bg-destructive/10 transition-colors"
+                      aria-label="Report an issue with this document"
+                    >
                       <AlertTriangle className="h-4 w-4 mr-2" />
                       Report Issue
                     </Button>
@@ -347,7 +590,7 @@ export function CommissionerRequestPage() {
                     <DialogHeader>
                       <DialogTitle>Report Issue with Document</DialogTitle>
                       <DialogDescription>
-                        Flag this document as having legal errors or unacceptable wording. 
+                        Flag this document as having legal errors or unacceptable wording.
                         This will be logged for review.
                       </DialogDescription>
                     </DialogHeader>
@@ -356,7 +599,7 @@ export function CommissionerRequestPage() {
                         <Label htmlFor="reason">Reason for Issue</Label>
                         <Textarea
                           id="reason"
-                          placeholder="Explain why this document cannot be notarized (e.g., bad wording, legal errors, missing information)..."
+                          placeholder="Explain why this document cannot be notarized..."
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
                           rows={4}
@@ -367,10 +610,11 @@ export function CommissionerRequestPage() {
                       <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
                         Cancel
                       </Button>
-                      <Button 
-                        variant="destructive" 
+                      <Button
+                        variant="destructive"
                         onClick={handleReportIssue}
                         disabled={!rejectReason.trim() || isReporting}
+                        aria-label="Submit issue report"
                       >
                         {isReporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                         Submit Report

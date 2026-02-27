@@ -43,7 +43,7 @@ const formatTTDateTime = (dateInput: string | number | Date) => {
       minute: '2-digit',
       hour12: true,
     }).format(new Date(dateInput));
-  } catch (e) {
+  } catch {
     return format(new Date(dateInput), 'MMM d, yyyy h:mm a');
   }
 };
@@ -64,9 +64,9 @@ export function RequestStatusPage() {
   // Normalize status to uppercase for comparisons
   const normalizedStatus = request?.status?.toUpperCase();
   
-  // Poll when AI is processing OR when awaiting reviewer decision.
-  // This ensures the UI updates live when a reviewer approves/rejects.
-  const shouldPoll = ['SUBMITTED', 'PROCESSING', 'NEEDS_REVIEW'].includes(normalizedStatus || '');
+  // Poll when the request is in any non-terminal state so the UI
+  // updates live when a reviewer approves, or a commissioner stamps/completes.
+  const shouldPoll = ['SUBMITTED', 'PROCESSING', 'NEEDS_REVIEW', 'APPROVED', 'DRAFT_READY'].includes(normalizedStatus || '');
   const { data: statusData } = useGetRequestStatusQuery(Number(id), {
     skip: !id || !shouldPoll,
     pollingInterval: shouldPoll ? 3000 : 0,
@@ -101,13 +101,15 @@ export function RequestStatusPage() {
   const [submitClarification, { isLoading: isSubmittingClarification }] = useSubmitClarificationMutation();
   // const [selectCommissioner, { isLoading: isWithdrawing }] = useSelectCommissionerMutation();
 
-  // Refetch when status changes from processing
+  // Refetch the full request whenever the polling endpoint reports a status
+  // that differs from what we currently have — covers AI finishing, reviewer
+  // approving, and commissioner stamping/completing.
   useEffect(() => {
     const pollingStatus = statusData?.status?.toUpperCase();
-    if (pollingStatus && pollingStatus !== 'PROCESSING' && pollingStatus !== 'SUBMITTED') {
+    if (pollingStatus && pollingStatus !== normalizedStatus) {
       refetch();
     }
-  }, [statusData?.status, refetch]);
+  }, [statusData?.status, normalizedStatus, refetch]);
 
   /*
   // Handle commissioner withdrawal
@@ -286,7 +288,7 @@ export function RequestStatusPage() {
     if (normalizedStatus === 'COMPLETED') {
       items.push({ label: 'Completed & Notarized', description: request.completed_at ? format(new Date(request.completed_at), 'MMM d, yyyy h:mm a') : undefined, status: 'completed' });
     } else if (normalizedStatus === 'APPROVED') {
-      items.push({ label: 'Ready for Notarization', status: 'current' });
+      items.push({ label: 'Book Your Appointment', status: 'current' });
     }
 
     if (normalizedStatus === 'NEEDS_CLARIFICATION') {
@@ -300,6 +302,7 @@ export function RequestStatusPage() {
   const isProcessing = normalizedStatus === 'PROCESSING' || normalizedStatus === 'SUBMITTED';
   const isDraftReady = normalizedStatus === 'DRAFT_READY';
   const isApproved = normalizedStatus === 'APPROVED';
+  const isCompleted = normalizedStatus === 'COMPLETED';
   const needsClarification = normalizedStatus === 'NEEDS_CLARIFICATION';
   const needsReview = normalizedStatus === 'NEEDS_REVIEW';
   const appointmentStatus = request?.appointment_slot?.appointment_status;
@@ -413,6 +416,28 @@ export function RequestStatusPage() {
             </Card>
           )}
 
+          {/* Approved - Book Appointment Banner */}
+          {isApproved && !commissionerConfirmed && (
+            <Card className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
+              <CardContent className="py-8 text-center">
+                <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2 text-green-800 dark:text-green-200">Review Approved!</h2>
+                <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
+                  Your affidavit has passed the professional review. Book an appointment with a commissioner to have your document notarized.
+                </p>
+                <Button
+                  size="lg"
+                  onClick={handleScheduleAction}
+                  className="w-full sm:w-auto cursor-pointer"
+                  aria-label="Book appointment with commissioner"
+                >
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Book Appointment
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Draft Ready - Schedule Banner */}
           {isDraftReady && (
             <Card className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
@@ -430,6 +455,31 @@ export function RequestStatusPage() {
                   <Calendar className="h-5 w-5 mr-2" />
                   Select Commissioner
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Completed / Notarized Banner */}
+          {isCompleted && (
+            <Card className="border-green-500 bg-green-50 dark:bg-green-950/20">
+              <CardContent className="py-8 text-center">
+                <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-9 w-9 text-green-600 dark:text-green-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2 text-green-800 dark:text-green-200">
+                  Affidavit Notarized!
+                </h2>
+                <p className="text-muted-foreground mb-4 max-w-lg mx-auto">
+                  Your affidavit has been officially notarized
+                  {request.commissioner
+                    ? ` by ${request.commissioner.first_name} ${request.commissioner.last_name}`
+                    : ''}. Your signed document is ready to download.
+                </p>
+                {request.completed_at && (
+                  <p className="text-sm text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/40 px-4 py-2 rounded-md inline-block">
+                    Completed on {formatTTDateTime(request.completed_at)}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -508,7 +558,7 @@ export function RequestStatusPage() {
               {/* Show for DRAFT_READY and APPROVED until commissioner confirms */}
               {canShowCommissionerSelection && (
                  <div className="space-y-2">
-                  <Label>Commissioner Appointment</Label>
+                  <Label>{isApproved ? 'Book Your Appointment' : 'Commissioner Selection'}</Label>
                   
                   {/* Show alert if appointment was rejected/cancelled by commissioner */}
                   {request.appointment_slot?.appointment_status === 'rejected' && (
@@ -581,19 +631,25 @@ export function RequestStatusPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => navigate(ROUTES.REQUEST_SELECT_COMMISSIONER.replace(':id', String(id)))}
-                        className="w-full"
+                        className="w-full cursor-pointer"
+                        aria-label={isApproved ? 'Book or change appointment' : 'Select commissioner'}
                       >
-                        {request.appointment_slot?.appointment_status === 'pending' ? 'Change Appointment' : 'Select Commissioner'}
+                        {request.appointment_slot?.appointment_status === 'pending'
+                          ? 'Change Appointment'
+                          : isApproved
+                            ? 'Book Appointment'
+                            : 'Select Commissioner'}
                       </Button>
                     </div>
                   ) : (
                     <Button 
                       variant="outline" 
-                      className="w-full justify-start"
+                      className="w-full justify-start cursor-pointer"
                       onClick={handleScheduleAction}
+                      aria-label={isApproved ? 'Book appointment with commissioner' : 'Select commissioner'}
                     >
-                      <User className="h-4 w-4 mr-2" />
-                      Select Commissioner
+                      <Calendar className="h-4 w-4 mr-2" />
+                      {isApproved ? 'Book Appointment' : 'Select Commissioner'}
                     </Button>
                   )}
                 </div>
@@ -603,13 +659,23 @@ export function RequestStatusPage() {
               {commissionerConfirmed && (
                 <div className="space-y-2">
                   <Label>Commissioner</Label>
-                  <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
-                    <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
-                    <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
-                    <p className="text-xs text-muted-foreground">
-                      Commissioner selection is locked after appointment confirmation.
-                    </p>
-                  </div>
+                  {isCompleted ? (
+                    <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800 text-center space-y-1">
+                      <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto" />
+                      <p className="font-medium text-sm text-green-700 dark:text-green-300">Notarized</p>
+                      <p className="text-xs text-muted-foreground">
+                        This affidavit has been officially notarized.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center space-y-2">
+                      <Lock className="h-5 w-5 text-muted-foreground mx-auto" />
+                      <p className="font-medium text-sm text-muted-foreground">Selection Locked</p>
+                      <p className="text-xs text-muted-foreground">
+                        Commissioner selection is locked after appointment confirmation.
+                      </p>
+                    </div>
+                  )}
                   {request.commissioner && (
                     <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                       <div className="flex items-center gap-3">
@@ -620,7 +686,9 @@ export function RequestStatusPage() {
                           <p className="font-medium text-green-700 dark:text-green-300">
                             {request.commissioner.first_name} {request.commissioner.last_name}
                           </p>
-                          <p className="text-xs text-muted-foreground">Appointment Confirmed</p>
+                          <p className="text-xs text-muted-foreground">
+                            {isCompleted ? 'Notarized ✓' : 'Appointment Confirmed'}
+                          </p>
                         </div>
                       </div>
                     </div>
