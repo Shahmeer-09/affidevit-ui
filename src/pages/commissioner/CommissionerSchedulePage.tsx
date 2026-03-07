@@ -11,6 +11,7 @@ import {
   useRejectSlotMutation,
   useCancelSlotMutation,
 } from '@/store/api/commissionerApi';
+import { useGetProfileQuery } from '@/store/api/authApi';
 import { Calendar, User, FileText, ArrowRight, Loader2, Check, X, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -28,6 +29,8 @@ import { Textarea } from '@/components/ui/textarea';
 export function CommissionerSchedulePage() {
   const navigate = useNavigate();
   const { data: schedule, isLoading } = useGetCommissionerScheduleQuery();
+  const { data: profile } = useGetProfileQuery();
+  const autoAcceptOn = profile?.auto_accept_appointments ?? false;
   const [acceptSlot, { isLoading: isAccepting }] = useAcceptSlotMutation();
   const [rejectSlot, { isLoading: isRejecting }] = useRejectSlotMutation();
   const [cancelSlot, { isLoading: isCancelling }] = useCancelSlotMutation();
@@ -125,6 +128,14 @@ export function CommissionerSchedulePage() {
         title="My Schedule"
         description="View your upcoming appointments and booked slots"
       />
+
+      {/* Auto-Accept banner */}
+      {autoAcceptOn && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm">
+          <span className="font-semibold">Auto-Accept is ON</span>
+          <span className="text-muted-foreground">— new bookings are accepted automatically. Turn this off in Settings › Preferences.</span>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

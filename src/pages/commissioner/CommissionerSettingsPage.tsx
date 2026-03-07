@@ -14,7 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '@/components/features';
 import { useUpdateProfileMutation, useGetProfileQuery } from '@/store/api/authApi';
-import { Loader2, CheckCircle, User, Clock, Plus, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle, User, Clock, Plus, Trash2, Settings2 } from 'lucide-react';
 import type { TimeSlot, AvailabilitySchedule } from '@/types';
 import { toast } from 'sonner';
 
@@ -49,6 +49,10 @@ export function CommissionerSettingsPage() {
     recurring: {},
     timezone: 'America/Port_of_Spain',
   });
+
+  // Preferences state
+  const [autoAccept, setAutoAccept] = useState(false);
+  const [isSavingPrefs, setIsSavingPrefs] = useState(false);
 
   const {
     register,
@@ -85,6 +89,9 @@ export function CommissionerSettingsPage() {
           timezone: profile.availability.timezone || 'America/Port_of_Spain',
         });
       }
+
+      // Sync preferences
+      setAutoAccept(profile.auto_accept_appointments ?? false);
     }
   }, [profile, reset]);
 
@@ -110,6 +117,24 @@ export function CommissionerSettingsPage() {
     } catch (error) {
       console.error('Failed to save availability:', error);
       toast.error('Failed to save availability');
+    }
+  };
+
+  const onToggleAutoAccept = async (value: boolean) => {
+    setAutoAccept(value);
+    setIsSavingPrefs(true);
+    try {
+      await updateProfile({ auto_accept_appointments: value }).unwrap();
+      await refetch();
+      toast.success(
+        value ? 'Auto-Accept enabled — new bookings will be accepted automatically.' : 'Auto-Accept disabled.',
+      );
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      toast.error('Failed to update preferences');
+      setAutoAccept(!value); // revert on error
+    } finally {
+      setIsSavingPrefs(false);
     }
   };
 
@@ -213,6 +238,10 @@ export function CommissionerSettingsPage() {
           <TabsTrigger value="availability" className="gap-2">
             <Clock className="h-4 w-4" />
             Availability
+          </TabsTrigger>
+          <TabsTrigger value="preferences" className="gap-2">
+            <Settings2 className="h-4 w-4" />
+            Preferences
           </TabsTrigger>
         </TabsList>
 
@@ -402,6 +431,51 @@ export function CommissionerSettingsPage() {
                   Save Availability
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Preferences Tab ─────────────────────────────── */}
+        <TabsContent value="preferences">
+          <Card>
+            <CardHeader>
+              <CardTitle>Appointment Preferences</CardTitle>
+              <CardDescription>
+                Control how new appointment bookings are handled
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Auto-Accept toggle */}
+              <div className="flex items-start justify-between gap-6 p-4 rounded-lg border">
+                <div className="space-y-1">
+                  <Label htmlFor="auto-accept" className="text-base font-semibold cursor-pointer">
+                    Auto-Accept Appointments
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    When enabled, new appointment requests from clients are accepted
+                    automatically — no manual review required on the Schedule page.
+                  </p>
+                  {autoAccept && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+                      ⚠️ Auto-Accept is ON. All new bookings are confirmed instantly.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="auto-accept"
+                  checked={autoAccept}
+                  onCheckedChange={onToggleAutoAccept}
+                  disabled={isSavingPrefs}
+                  aria-label="Toggle auto-accept appointments"
+                  className="cursor-pointer shrink-0 mt-1"
+                />
+              </div>
+
+              <Separator />
+
+              <p className="text-xs text-muted-foreground">
+                Changes are saved immediately when you toggle the switch.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

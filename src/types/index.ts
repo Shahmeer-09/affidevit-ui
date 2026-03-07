@@ -52,6 +52,8 @@ export interface User {
   bank_account_number?: string;
   bank_account_name?: string;
   payment_preference?: PaymentPreference;
+  // Appointment preferences
+  auto_accept_appointments?: boolean;
 }
 
 export interface AuthTokens {

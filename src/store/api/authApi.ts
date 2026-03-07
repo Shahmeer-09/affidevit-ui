@@ -77,6 +77,7 @@ export interface ProfileUpdateRequest {
   bio?: string;
   address?: string;
   organization?: string;
+  auto_accept_appointments?: boolean;
 }
 
 export const authApi = baseApi.injectEndpoints({
